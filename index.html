@@ -8291,8 +8291,13 @@ function drawItems(){
     ctx.restore();
 
     // ラベル（アイテム名・下部・アイテムカラー）
+    // 2026-08〜：白地に対して黄色・シアン等の明るい色が読めなくなる問題への対応として、
+    // 黒縁アウトライン（strokeText）を追加し、文字サイズも10px→12pxに引き上げた
+    // （モックアップで視認性を確認済み。他のバッジ要素と同じ「白地に黒縁」の手描き風デザインに揃う）
     ctx.save();ctx.globalAlpha=alpha*0.9;
-    ctx.font='bold 10px Courier New';ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.font='bold 12px Courier New';ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.lineJoin='round';ctx.miterLimit=2;ctx.lineWidth=3.36;ctx.strokeStyle='#1a1a1a';
+    ctx.strokeText(def.label,x,y+gr+4);
     ctx.fillStyle=def.color;ctx.fillText(def.label,x,y+gr+4);ctx.restore();
 
     if(collecting){
