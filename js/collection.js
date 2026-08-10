@@ -1,10 +1,11 @@
 // ==========================================================================
 // js/collection.js — コレクション画面（プロフィール／チュートリアル／図鑑／実績称号）
 //
-// プロフィール・図鑑・実績称号の中身は実装済み（js/profile.js・js/zukan.js・
-// このファイル内の実績称号レンダリングを参照）。チュートリアル一覧だけは、
-// まだ実際のポップ内容を出す処理が無いダミー20件のままになっている
-// （下の「チュートリアル一覧」セクション内の // TODO 参照）。
+// プロフィール・図鑑・実績称号・チュートリアル一覧、いずれも実装済み
+// （js/profile.js・js/zukan.js・このファイル内の実績称号レンダリング参照）。
+// チュートリアル一覧は js/story.js が持つチュートリアルの定義（タイトル・本文・画像）を
+// window.Story.getTutorialLog() / window.Story.replayTutorial() 経由でそのまま利用しており、
+// 文章や画像パスをこのファイル側で二重管理していない（下の「チュートリアル一覧」セクション参照）。
 //
 // アイコン画像は js/assets.js の IMAGE_ASSET_PATHS.collection に登録したパスから
 // 読み込む。ファイルがまだ無くても壊れず、その項目のアイコン欄が空くだけになる
@@ -110,30 +111,42 @@
   }
 
   // ── チュートリアル一覧 ──
-  const TUTORIAL_ITEMS = Array.from({length:20}, (_,i) => ({
-    no: String(i+1).padStart(3,'0'),
-    title: 'チュートリアルタイトル（仮）',
-  }));
-
+  // 中身（タイトル・本文・画像）は全てjs/story.jsのSTORY_STEPS/SIDE_STEPS内の
+  // type:'tutorial'なステップが正データ。ここではwindow.Story.getTutorialLog()が返す
+  // 一覧（表示済みかどうかのseenフラグ付き）を描画するだけ。
+  // ・表示済み(seen:true)  → 実際のタイトルを見せ、タップで同じチュートリアルポップを見返せる
+  //   （js/story.jsのwindow.Story.replayTutorial(id)が、通常の初回表示と同じ
+  //     #story-tutorial-overlayを使って、ストーリー進行やバッジ付与などには一切影響せずに再生する）
+  // ・未表示(seen:false) → 実績称号・図鑑の未解放カードと同じ考え方で「？？？？？」に伏せ、
+  //   ネタバレを防ぐ（ロック中はタップしても何も起きない）
   const tutorialScreen = document.getElementById('tutorial-screen');
   const tutorialList   = byId('tutorial-list');
-  if (tutorialList){
-    TUTORIAL_ITEMS.forEach((item) => {
+  function renderTutorialList(){
+    if (!tutorialList) return;
+    if (typeof window.Story === 'undefined' || typeof window.Story.getTutorialLog !== 'function') return;
+    tutorialList.innerHTML = '';
+    const entries = window.Story.getTutorialLog();
+    entries.forEach((item, i) => {
+      const no = String(i + 1).padStart(3, '0');
       const card = document.createElement('div');
-      card.className = 'tutorial-card';
-      card.innerHTML = `<div class="tutorial-card-no">No.${item.no}</div><div class="tutorial-card-title">${item.title}</div>`;
-      card.addEventListener('click', () => {
-        // TODO: 実際のポップ内容が決まったら、ここでその内容を表示する処理を呼ぶ
-        console.log('チュートリアル', item.no, 'を開く（未実装）');
-      });
+      if (item.seen){
+        card.className = 'tutorial-card';
+        card.innerHTML = `<div class="tutorial-card-no">No.${no}</div><div class="tutorial-card-title">${item.title}</div>`;
+        card.addEventListener('click', () => window.Story.replayTutorial(item.id));
+      } else {
+        card.className = 'tutorial-card locked';
+        card.innerHTML = `<div class="tutorial-card-no">No.${no}</div><div class="tutorial-card-title">？？？？？</div>`;
+      }
       tutorialList.appendChild(card);
     });
   }
 
   const collectionTutorialBtn = byId('collection-tutorial');
   const tutorialBackBtn = byId('tutorial-back');
-  // チュートリアル一覧を開く処理をまとめて、開くたびにストーリー進行もチェックする
+  // チュートリアル一覧を開く処理をまとめて、開くたびに一覧を最新の表示済み状態で描き直し、
+  // ストーリー進行もチェックする
   function openTutorialScreen(){
+    renderTutorialList();
     openSubscreen(tutorialScreen);
     if (window.Story) window.Story.check('tutorial_open'); // js/story.js: tutorial_screen_intro_doctor
   }

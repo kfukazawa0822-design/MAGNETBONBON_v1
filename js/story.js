@@ -284,7 +284,9 @@
     // No.041 チュートリアル：コレクション：図鑑が解放されました！（コレクションに赤バッジ・図鑑ボタン発光）
     { id:'lv30_zukan_unlock_tutorial', type:'tutorial', context:null, condition: () => true,
       titleBase:'コレクション：図鑑が解放されました！',
-      pages: [ { text:'「図鑑」が解放されました。集めた情報の確認や、装置・磁晶核のカスタマイズができるようになりました。' } ],
+      // 2026-08〜：カスタマイズ機能は実装しない方針となったため、文言から削除。
+      // 代わりに、図鑑本来の役割（磁晶核・岩ギミック・アイテム・スキルなどの発見を記録として振り返れること）に差し替え
+      pages: [ { text:'「図鑑」が解放されました。磁晶核や岩・ギミック、アイテムやスキルなど、これまでの発見を記録として振り返ることができるようになりました。' } ],
       effectsAfter: () => {
         saveData.storyFlags.zukanUnlocked = true;
         if (typeof saveSaveData === 'function') saveSaveData();
@@ -324,17 +326,20 @@
       titleBase:'バフに関して',
       pages: [ { text:'動画を視聴すると、100EPと「EXPバフ」を獲得できます。EXPバフは次の1プレイのみ有効で、獲得EXPが2倍になります。（1日1回限定）' } ] },
 
-    // 新規追加（ご要望対応）：有料応援パック①購入時の特典説明ポップ（初回購入時のみ、
-    // buff_tutorialと全く同じ仕組み）。タイトル・本文は未定のプレースホルダーなので、
-    // 正式な内容が決まり次第ここを差し替える
+    // 有料応援パック①購入時の特典説明ポップ（初回購入時のみ、buff_tutorialと全く同じ仕組み）。
+    // 2026-08〜：正式な文言に差し替え済み
     { id:'paid_pack_1_tutorial', type:'tutorial', context:'paid_pack_1_purchased', condition: () => true,
-      titleBase:'（未定：有料応援パック①の特典について）',
-      pages: [ { text:'（本文未定。有料応援パック①購入直後・初回のみ表示される説明ポップです。内容が決まり次第差し替えてください。）' } ] },
+      titleBase:'有料応援パック①：受け取り完了！',
+      pages: [ { text:'物資の購入ありがとうございます！\n\n'
+         + '研究後や無料応援パックなどに表示される広告が表示されなくなりました。広告を気にせず、サクサク研究を進められる環境が整います！限定称号もプレゼント。EPの受け取りもお忘れなく！\n\n'
+         + '広告削除 ＋ 限定称号' } ] },
 
-    // 新規追加（ご要望対応）：有料応援パック②購入時の特典説明ポップ（初回購入時のみ）
+    // 有料応援パック②購入時の特典説明ポップ（初回購入時のみ）。2026-08〜：正式な文言に差し替え済み
     { id:'paid_pack_2_tutorial', type:'tutorial', context:'paid_pack_2_purchased', condition: () => true,
-      titleBase:'（未定：有料応援パック②の特典について）',
-      pages: [ { text:'（本文未定。有料応援パック②購入直後・初回のみ表示される説明ポップです。内容が決まり次第差し替えてください。）' } ] },
+      titleBase:'有料応援パック②：受け取り完了！',
+      pages: [ { text:'物資の購入ありがとうございます！\n\n'
+         + '研究所のカスタマイズアイテムをまとめて解放！ここでしか手に入らない、遊び心たっぷりの限定デザイン！お気に入りの組み合わせで、自分だけの研究スタイルを楽しもう！\n\n'
+         + '限定称号／機体／玉／爆発エフェクト／プロフィール写真' } ] },
 
     // No.036 博士ストーリー：プロフィール説明（初めてプロフィールを開いた）
     { id:'profile_intro_doctor', type:'doctor', context:'profile_open', condition: () => true,
@@ -408,6 +413,11 @@
   let activeStep = null;
   let activeStepIsSide = false;
   let pageIndex = 0;
+  // コレクション「チュートリアル」一覧からの見返し表示中かどうか。
+  // 通常の初回表示（ストーリー進行の一環）と全く同じ#story-tutorial-overlayを使い回すが、
+  // 見返し時はゲームの一時停止／effectsAfter（バッジ付与・ボタン発光など）／
+  // ストーリー進行(nextIndex)を一切動かさず、最後まで読んだら単に閉じるだけにする
+  let replayMode = false;
 
   function advance(){
     getProgress().nextIndex += 1;
@@ -530,7 +540,10 @@
   if (doctorOv){
     doctorOv.addEventListener('click', () => {
       if (doctorEntering) return; // 登場演出中はタップしても進めない
-      if (activeStep && activeStep.type === 'doctor') advanceDoctor(activeStep);
+      if (activeStep && activeStep.type === 'doctor'){
+        if (window.SoundSE) window.SoundSE.playDoctor();
+        advanceDoctor(activeStep);
+      }
     });
   }
 
@@ -545,8 +558,9 @@
     pageIndex = 0;
     renderTutorialPage(step);
     // ゲームプレイ中に割り込むタイプのチュートリアル（例：初アイテム獲得時）は、
-    // 表示中だけゲームを一時停止する（index.html側に用意したwindow.setGamePausedを使う）
-    if (step.pauseGame && typeof window.setGamePaused === 'function') window.setGamePaused(true);
+    // 表示中だけゲームを一時停止する（index.html側に用意したwindow.setGamePausedを使う）。
+    // ただし、コレクション画面からの見返し表示（replayMode）はゲームプレイ中ではないので対象外
+    if (step.pauseGame && !replayMode && typeof window.setGamePaused === 'function') window.setGamePaused(true);
     if (tutOv) tutOv.classList.remove('hide');
     if (window.BoilFX && tutCard) window.BoilFX.register(tutCard);
     // 新しいステップが始まった瞬間だけ「ポヨン」と飛び出す演出を再生する
@@ -599,16 +613,26 @@
     if (pageIndex >= step.pages.length){
       if (tutOv) tutOv.classList.add('hide');
       if (window.BoilFX && tutCard) window.BoilFX.unregister(tutCard);
-      if (step.pauseGame && typeof window.setGamePaused === 'function') window.setGamePaused(false);
-      if (step.effectsAfter) step.effectsAfter();
-      finishActiveStep();
+      if (replayMode){
+        // コレクションからの見返し：進行やeffectsAfter（バッジ・発光など）には一切触れず、
+        // 閉じて終わり（多重発火防止フラグだけ元に戻す）
+        replayMode = false;
+        activePopupOpen = false;
+      } else {
+        if (step.pauseGame && typeof window.setGamePaused === 'function') window.setGamePaused(false);
+        if (step.effectsAfter) step.effectsAfter();
+        finishActiveStep();
+      }
     } else {
       renderTutorialPage(step);
     }
   }
   if (tutOv){
     tutOv.addEventListener('click', () => {
-      if (activeStep && activeStep.type === 'tutorial') advanceTutorial(activeStep);
+      if (activeStep && activeStep.type === 'tutorial'){
+        if (window.SoundSE) window.SoundSE.playTutorial();
+        advanceTutorial(activeStep);
+      }
     });
   }
 
@@ -730,7 +754,52 @@
     runStep(step, false);
   }
 
-  window.Story = { check };
+  // ── コレクション「チュートリアル」一覧との連携 ──
+  // STORY_STEPS・SIDE_STEPSのうち type:'tutorial' のものだけを、定義順（メインの列→おまけの列）
+  // に並べたものを一覧の元データとして使う。js/collection.js側はこの内容を描画するだけで、
+  // 個々の文章・画像パスなどを二重管理しない。
+  function allTutorialSteps(){
+    return STORY_STEPS.concat(SIDE_STEPS).filter(s => s.type === 'tutorial');
+  }
+  // そのステップが「すでに一度でも表示されたか」を判定する。
+  // メインの列(STORY_STEPS)は、進行が既にそのステップを通り過ぎていれば表示済みとみなせる
+  // （nextIndexは表示完了ごとに1つずつ進むだけの単純なカウンタなので、配列上の位置と比較すればよい）。
+  // SIDE_STEPSは表示済みかどうかを個別にsideDone[id]で管理しているので、そちらを見る。
+  function isTutorialSeen(step){
+    const idx = STORY_STEPS.indexOf(step);
+    if (idx !== -1) return idx < getProgress().nextIndex;
+    return isSideStepDone(step.id);
+  }
+  function findTutorialStepById(id){
+    return allTutorialSteps().find(s => s.id === id) || null;
+  }
+  // js/collection.jsのチュートリアル一覧描画用：表示済みのものだけタイトルを見せ、
+  // 未表示のものは（ネタバレ防止のため）タイトルを伏せて渡す。実際の伏せ表示は
+  // collection.js側で「？？？？？」に置き換える想定なので、ここではseenフラグだけ渡せば十分
+  function getTutorialLog(){
+    return allTutorialSteps().map(step => ({
+      id: step.id,
+      title: step.titleBase,
+      seen: isTutorialSeen(step),
+      pageCount: step.pages.length,
+    }));
+  }
+  // js/collection.jsのチュートリアル一覧からタップされた時に呼ぶ：
+  // 既に見たことのあるチュートリアルだけ、同じ#story-tutorial-overlayを使って見返せるようにする。
+  // ストーリー進行(nextIndex/sideDone)やeffectsAfter（バッジ・ボタン発光など）には一切触れない。
+  function replayTutorial(id){
+    if (activePopupOpen) return false; // 何か他のポップ表示中は弾く（多重表示防止）
+    const step = findTutorialStepById(id);
+    if (!step || !isTutorialSeen(step)) return false; // 未定義／まだ見ていないものは見返せない
+    replayMode = true;
+    activeStep = step;
+    activeStepIsSide = false; // replayModeがtrueの間はfinishActiveStep自体を通らないので実質未使用
+    activePopupOpen = true;
+    showTutorialStep(step);
+    return true;
+  }
+
+  window.Story = { check, getTutorialLog, replayTutorial };
 
   console.log('[story.js] 初期化完了。');
 })();

@@ -295,6 +295,7 @@
 
   function spendEP(amount){
     addCoins(-amount);
+    if (window.SoundSE) window.SoundSE.playEpUse();
     if (typeof updatePlayerStatusBar === 'function') updatePlayerStatusBar();
   }
 
@@ -327,12 +328,15 @@
       if ((item.kind === 'cosmetic' || item.kind === 'gift') && window.Zukan) window.Zukan.unlock(item.id);
       // 実績「やさしい助手／世話好き／博士の恩人」：差し入れ回数を更新
       if (item.kind === 'gift' && window.Achievements) window.Achievements.incrementStat('doctorGiftCount');
-      // 有料応援パック②は「限定スキン」も同梱しているため、専用の所持フラグも一緒に立てる
-      // （設定画面の機体スキン選択リストは saveData.shopPurchases['player_skin_special'] を見る）
+      // 有料応援パック②は「限定スキン」＋「限定アイコン」も同梱しているため、専用の所持フラグも一緒に立てる
+      // （設定画面の機体スキン選択リストは saveData.shopPurchases['player_skin_special'] を見る。
+      // 　限定アイコンicon_12はプロフィール画面のアイコン選択に出る＝js/profile.js:ownedIconIds()参照。
+      // 　以前はここにicon_12の付与が抜けており、②を購入してもプロフィールで選べない不具合があった）
       if (item.id === 'paid_pack_2') {
         saveData.shopPurchases['player_skin_special'] = true;
         saveData.shopPurchases['marble_skin_special'] = true;
         saveData.shopPurchases['explode_fx_special'] = true;
+        saveData.shopPurchases['icon_12'] = true;
         // 上記3つは単独のショップ商品ではない（kind==='cosmetic'を通らない）ため、
         // 上のif((item.kind === 'cosmetic' ...))では図鑑が解放されない。
         // 以前はjs/zukan.js起動時の「救済措置」に解放を任せていたが、それだと次回

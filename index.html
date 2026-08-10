@@ -962,7 +962,7 @@ canvas { display:block; width:100%; height:100%; }
 .profile-stat-row span:first-child { color:#666; }
 .profile-stat-row span:last-child { font-weight:bold; }
 
-/* チュートリアルカード（ボタンとして機能、押すと過去のポップを見返せる想定） */
+/* チュートリアルカード（ボタンとして機能、押すと過去のポップを見返せる。中身はjs/story.js参照） */
 .tutorial-card {
   background:#f8f8f8; border:1px solid #ddd; border-radius:6px;
   padding:12px 14px; cursor:pointer; text-align:left;
@@ -973,6 +973,11 @@ canvas { display:block; width:100%; height:100%; }
 .tutorial-card:hover, .tutorial-card:active { background:#eee; border-color:#bbb; }
 .tutorial-card-no { font-size:9px; color:#999; letter-spacing:1px; }
 .tutorial-card-title { font-size:15px; color:#111; font-weight:bold; margin-top:3px; }
+/* まだ一度も表示されていないチュートリアル：実績称号の未解放カードと同じ考え方で伏せて、
+   タップしても何も起きないようにする（ネタバレ防止） */
+.tutorial-card.locked { background:#fff; border-color:#eee; cursor:default; }
+.tutorial-card.locked:hover, .tutorial-card.locked:active { background:#fff; border-color:#eee; }
+.tutorial-card.locked .tutorial-card-title { color:#bbb; letter-spacing:2px; }
 
 /* 実績称号カード（ボタンではない、ただの表示） */
 /* ── 実績解除トースト（画面左下からにゅっと出るポップ） ── */
@@ -3184,6 +3189,8 @@ canvas { display:block; width:100%; height:100%; }
      ※ Capacitorプロジェクトへ組み込む際は、index.htmlと同じ階層に js/ と assets/ フォルダも
        まるごと一緒にコピーすること（www/index.html, www/js/, www/assets/ のように） -->
 <script src="js/assets.js"></script>
+<script src="js/sound_se.js"></script>
+<script src="js/sound_bgm.js"></script>
 
 <script>
 // ════════════════════════════════════════════════
@@ -3306,7 +3313,7 @@ const SKILL_DEFS = [
   { id:'blink',   name:'ブリンク',     icon:'⚡', spCost:100, maxStock:3, desc:'指定方向へ瞬間移動する（約500px）' },
   { id:'dash',    name:'ダッシュ',     icon:'💨', spCost:80,  maxStock:1, desc:'約3秒間、高速移動する' },
   { id:'cannon',  name:'大砲',         icon:'💣', spCost:80,  maxStock:3, desc:'前方へ巨大な磁晶核を発射する' },
-  { id:'typhoon', name:'台風の目',     icon:'🌪', spCost:200, maxStock:1, desc:'約3秒間、周囲の玉を吸い寄せる' },
+  { id:'typhoon', name:'台風の目',     icon:'🌪', spCost:200, maxStock:1, desc:'約3秒間、周囲の玉とアイテムを引き寄せる' },
   { id:'shield',  name:'シールド',     icon:'🛡', spCost:100, maxStock:2, desc:'約10秒間、Sで引き寄せた玉を保護。バッテリーのハズレも無効化' },
   { id:'bubble',  name:'フリーズショット', icon:'🫧', spCost:100,  maxStock:1, desc:'狙いを定め、玉を勢いよく前方に飛ばす' },
   { id:'beacon',  name:'ワープビーコン', icon:'🛰', spCost:100, maxStock:1, desc:'アイテムを検知するビーコンを設置。再使用でワープ' },
@@ -3766,6 +3773,7 @@ resize();
 // ── 初期化 ────────────────────────────────────────
 function initGame(mode) {
   gameMode = mode;
+  if (window.SoundBGM) window.SoundBGM.play('stage');
   // 前の画面（モード選択など）で表示していたバナー（例：ロック中メッセージ）が
   // アニメーション途中でも、ゲーム開始時には確実に消しておく
   document.getElementById('event-banner').classList.remove('show');
@@ -4206,8 +4214,10 @@ function spawnItem() {
   if(gameMode === 'quick') pool = pool.filter(d=>d.cat!=='battery' && d.cat!=='skill'); // クイックプレイにはバッテリー・スキル関連アイテムは出さない
   if (player.battery<40) pool=[...pool,...ITEM_DEFS.filter(d=>d.cat==='battery' && gameMode!=='quick')];
   const def = resolveItemDef(pool[Math.floor(Math.random()*pool.length)]);
-  // ビーコン設置中は、ビーコン周囲600px以内のアイテムが3個未満なら優先してそこにスポーンする
-  const BEACON_ITEM_R = 600, BEACON_ITEM_CAP = 3;
+  // ビーコン設置中は、ビーコン周囲600px以内のアイテムが4個未満なら優先してそこにスポーンする
+  // （2026-08〜：ビーコン帰還時に判断する間もなくバッテリーの大ハズレを踏んでしまう「バッテリー事故」を
+  // 防ぐため、ビーコン中心からBEACON_ITEM_MIN_R以内には出現させない安全地帯を設けた）
+  const BEACON_ITEM_MIN_R = 250, BEACON_ITEM_R = 600, BEACON_ITEM_CAP = 4;
   let useBeacon = false;
   if (beaconPos) {
     let nearBeaconCount = 0;
@@ -4219,12 +4229,14 @@ function spawnItem() {
     }
     if (nearBeaconCount < BEACON_ITEM_CAP) useBeacon = true;
   }
-  // プレイヤーから1000〜1800px・岩・玉と重ならない位置に配置（ビーコン優先時はビーコン周囲600px以内）
+  // プレイヤーから1000〜1800px・岩・玉と重ならない位置に配置
+  // （ビーコン優先時はビーコン中心からBEACON_ITEM_MIN_R〜BEACON_ITEM_R px の輪の範囲内。
+  //   中心付近を除外することで、帰還した瞬間に足元のアイテムを問答無用で拾ってしまう事故を防ぐ）
   let x, y, ok=false, tries=0;
   while(!ok && tries<50){
     let bx, by;
     if (useBeacon) {
-      const ang=Math.random()*Math.PI*2, dist=Math.random()*BEACON_ITEM_R;
+      const ang=Math.random()*Math.PI*2, dist=BEACON_ITEM_MIN_R + Math.random()*(BEACON_ITEM_R-BEACON_ITEM_MIN_R);
       bx=((beaconPos.x+Math.cos(ang)*dist)%WORLD_W+WORLD_W)%WORLD_W;
       by=((beaconPos.y+Math.sin(ang)*dist)%WORLD_H+WORLD_H)%WORLD_H;
     } else {
@@ -4279,6 +4291,11 @@ function spawnComboItem(wx, wy) {
 function applyItem(def) {
   let msg=def.label, col=def.color;
   const batteryBefore = player.battery; // 実績「起死回生」判定用（適用前の残量を記録）
+  // アイテム取得SE：バッテリー系（bat_stable/unstable/chaos）はあたり/ハズレ専用SEに一本化するので、
+  // それ以外のアイテムだけここで共通の取得音を鳴らす
+  if (window.SoundSE && def.id !== 'bat_stable' && def.id !== 'bat_unstable' && def.id !== 'bat_chaos') {
+    window.SoundSE.playItemGet();
+  }
   unlockItemZukan(def.id); // 図鑑「アイテム」解放（取得した時点で1回でも解放）
   if (window.Story) window.Story.check('item_pickup'); // 初アイテム獲得時のストーリー進行チェック
   // クイックプレイ限定：アイテム1つあたりの価値を2倍にする（1回の取得で通常の2段階分アップ）。
@@ -4333,11 +4350,16 @@ function applyItem(def) {
       msg = `+${EP_BONUS_AMOUNT}EP 獲得！`; col = '#dddddd';
       if (window.Achievements) window.Achievements.unlock('ach_010'); // 実績「年金生活」
       break;
-    case 'bat_stable':   player.battery=Math.min(100,player.battery+20); msg='バッテリー +20%'; break;
+    case 'bat_stable':
+      player.battery=Math.min(100,player.battery+20); msg='バッテリー +20%';
+      if (window.SoundSE) window.SoundSE.playBatteryHit();
+      break;
     case 'bat_unstable': {
       const ok=Math.random()<0.7;
-      if(ok){const amt=20+Math.floor(Math.random()*21); player.battery=Math.min(100,player.battery+amt); msg=`バッテリー +${amt}%`; col='#88ffaa';}
-      else {
+      if(ok){
+        const amt=20+Math.floor(Math.random()*21); player.battery=Math.min(100,player.battery+amt); msg=`バッテリー +${amt}%`; col='#88ffaa';
+        if (window.SoundSE) window.SoundSE.playBatteryHit();
+      } else {
         const amt=10+Math.floor(Math.random()*21);
         // シールド発動中はハズレ自体は引くが、バッテリーの減少だけ無効化(-0%)して守られたことを伝える
         if (skillActive && selectedSkillId === 'shield'){
@@ -4346,6 +4368,7 @@ function applyItem(def) {
           player.battery=Math.max(0,player.battery-amt); msg=`バッテリー -${amt}%`; col='#ff6666';
         }
         if (window.Achievements) window.Achievements.unlock('ach_011'); // 実績「ハズレくじ」
+        if (window.SoundSE) window.SoundSE.playBatteryMiss();
       }
       break;
     }
@@ -4360,8 +4383,10 @@ function applyItem(def) {
       msg=`SPゲージ効率UP ${upgrades.skillCharge}%`; col='#aaffff'; break;
     case 'bat_chaos':{
       const big=Math.random()<0.45;
-      if(big){const g=40+Math.floor(Math.random()*21);player.battery=Math.min(100,player.battery+g);msg=`バッテリー +${g}%!!`;col='#44ffaa';}
-      else {
+      if(big){
+        const g=40+Math.floor(Math.random()*21);player.battery=Math.min(100,player.battery+g);msg=`バッテリー +${g}%!!`;col='#44ffaa';
+        if (window.SoundSE) window.SoundSE.playBatteryHit();
+      } else {
         const l=25+Math.floor(Math.random()*31);
         // シールド発動中はハズレ自体は引くが、バッテリーの減少だけ無効化(-0%)して守られたことを伝える
         if (skillActive && selectedSkillId === 'shield'){
@@ -4370,6 +4395,7 @@ function applyItem(def) {
           player.battery=Math.max(0,player.battery-l);msg=`バッテリー -${l}%!!`;col='#ff2244';
         }
         if (window.Achievements) window.Achievements.unlock('ach_011'); // 実績「ハズレくじ」
+        if (window.SoundSE) window.SoundSE.playBatteryMiss();
       }
       break;
     }
@@ -4717,6 +4743,7 @@ function useSkill(){
   if(selectedSkillId==='cannon' && cannonCharge) return;
   if(skillStock <= 0) return;
   skillStock--;
+  if (window.SoundSE) window.SoundSE.playSkill(selectedSkillId);
   // 使用後も現在貯まっている途中のゲージ(skillSP)はそのまま継続する
   switch(selectedSkillId){
     case 'blink':   activateBlink();  break;
@@ -5027,11 +5054,13 @@ function activateBeacon(){
   if(!beaconPos){
     // 1回目：現在地を記憶（ストック消費なし）
     beaconPos = { x: player.wx, y: player.wy };
+    if (window.SoundSE) window.SoundSE.playBeaconSet();
     showSkillKanjiBanner('設置');
   } else {
     // 2回目：記憶地点へワープ（ストック消費あり）
     if(skillStock <= 0) return;
     skillStock--;
+    if (window.SoundSE) window.SoundSE.playBeaconWarp();
     const fromX = player.wx, fromY = player.wy;
 
     // 出発地点：吸い込まれるように収束するパーティクル＋閉じていくリング
@@ -5086,6 +5115,7 @@ function calcDensity() {
 // ── リザルト表示 ─────────────────────────────────
 function triggerGameOver() {
   gameRunning=false; gameOver=true;
+  if (window.SoundBGM) window.SoundBGM.play('result');
   joystickWrap.classList.remove('show');
   joyTouchId = null; joyReset();
   const m=Math.floor(playTime/60), s=Math.floor(playTime%60).toString().padStart(2,'0');
@@ -5121,6 +5151,7 @@ function triggerGameOver() {
   const xpBefore = playerProgress.xp;
   const coinReward = computeCoinReward(score, playTime);
   addCoins(coinReward.total);
+  if (window.SoundSE) window.SoundSE.playEpGet();
   const grandTotalCoins = coinReward.total + itemRewardCoinsThisSession;
   const levelUps = grantXP(grandTotalCoins * 10);
   document.getElementById('go-coin-base').innerHTML = `+${coinReward.base}<span class="ep-unit">EP</span>`;
@@ -5661,6 +5692,7 @@ function update(dt){
   if(playTime >= BATTERY_DRAIN_BOOST_TIME && !batteryDrainBoostAnnounced){
     batteryDrainBoostAnnounced = true;
     showTopNotification('⚠ バッテリー出力不安定 ⚠');
+    if (window.SoundBGM) window.SoundBGM.play('stageEnd');
   }
   const batteryDrainMult = (playTime >= BATTERY_DRAIN_BOOST_TIME ? BATTERY_DRAIN_BOOST_MULT : 1)
     * (gameMode === 'quick' ? QUICK_BATTERY_DRAIN_MULT : 1);
@@ -5860,6 +5892,24 @@ function update(dt){
         const tangentX = tny, tangentY = -tnx;
         const spinF = 0.6 * dt;
         m.vx += tangentX*spinF; m.vy += tangentY*spinF;
+      }
+    }
+    // フィールド上のアイテムも同様に引き寄せる（FB対応：2026-08〜）。
+    // 玉と違い強制取得はしない。ITEM_PULL_STOP_R以内まで寄せたら止め、
+    // 実際に拾うかは通常の当たり判定まで自分で近づく必要があるようにして、
+    // バッテリー等のハズレ運アイテムを判断の余地なく踏んでしまう「事故」を防ぐ
+    const ITEM_PULL_STOP_R = 250;
+    for(const it of items){
+      if(it.collecting) continue;
+      let idx2=it.x-player.wx, idy2=it.y-player.wy;
+      if(idx2> WORLD_W/2) idx2-=WORLD_W; else if(idx2<-WORLD_W/2) idx2+=WORLD_W;
+      if(idy2> WORLD_H/2) idy2-=WORLD_H; else if(idy2<-WORLD_H/2) idy2+=WORLD_H;
+      const idist2=Math.hypot(idx2,idy2);
+      if(idist2>ITEM_PULL_STOP_R && idist2<typhoonRange){
+        const inx=idx2/idist2, iny=idy2/idist2;
+        const pull = Math.min(180*dt, idist2-ITEM_PULL_STOP_R);
+        it.x = ((it.x - inx*pull) % WORLD_W + WORLD_W) % WORLD_W;
+        it.y = ((it.y - iny*pull) % WORLD_H + WORLD_H) % WORLD_H;
       }
     }
   }
@@ -6700,6 +6750,10 @@ function updateItems(dt,dtSec){
   for(let i=items.length-1;i>=0;i--){
     const item=items[i];
     item.pulse+=0.05*dt; item.life-=dtSec;
+    // 既にフィールドに出ている強化アイテムでも、対応する強化が別の取得で先にMAXへ達した場合は
+    // 毎フレーム再判定して即座に+30EPアイテムへ切り替える（従来は出現時点の判定のみで、
+    // 見た目・効果ともに拾うまで古いまま＝MAX後に拾っても効果が無いのに気づきにくい問題があった）
+    item.def = resolveItemDef(item.def);
     if(item.collecting){
       item.collectTimer+=dt;
       item.x+=(player.wx-item.x)*0.18*dt;
@@ -6795,6 +6849,7 @@ function spawnHoleMarbleBurst(x, y, count) {
 }
 
 function triggerHoleGimmick(hole) {
+  if (window.SoundSE) window.SoundSE.playGimmick();
   // イベントごとの持続時間（超爆発ラッシュだけ15秒、他は30秒）
   const GIMMICK_DURATIONS = { overcharge:30, rock_awaken:30, vortex:30, marble_fever:30, resonance_run:15 };
   const DURATION = GIMMICK_DURATIONS[hole.gimmickId] || 30;
@@ -8290,15 +8345,13 @@ function drawItems(){
 
     ctx.restore();
 
-    // ラベル（アイテム名・下部・アイテムカラー）
-    // 2026-08〜：白地に対して黄色・シアン等の明るい色が読めなくなる問題への対応として、
-    // 黒縁アウトライン（strokeText）を追加し、文字サイズも10px→12pxに引き上げた
-    // （モックアップで視認性を確認済み。他のバッジ要素と同じ「白地に黒縁」の手描き風デザインに揃う）
+    // ラベル（アイテム名・下部）
+    // 2026-08〜：白地に対して黄色・シアン等の明るい色が読めない問題の対策として、
+    // 一度は黒縁アウトライン＋アイテムカラーの塗りを試したが「黒縁が見にくい」とのFBを受け、
+    // アウトラインをやめてアイテムカラーに関係なく黒単色の塗りに変更した
     ctx.save();ctx.globalAlpha=alpha*0.9;
     ctx.font='bold 12px Courier New';ctx.textAlign='center';ctx.textBaseline='top';
-    ctx.lineJoin='round';ctx.miterLimit=2;ctx.lineWidth=3.36;ctx.strokeStyle='#1a1a1a';
-    ctx.strokeText(def.label,x,y+gr+4);
-    ctx.fillStyle=def.color;ctx.fillText(def.label,x,y+gr+4);ctx.restore();
+    ctx.fillStyle='#1a1a1a';ctx.fillText(def.label,x,y+gr+4);ctx.restore();
 
     if(collecting){
       const sc=Math.max(0.1,1-item.collectTimer/25);
@@ -9446,7 +9499,10 @@ Object.keys(DRAG_MODE_BY_BTN_ID).forEach(id=>{
 ['opt-bgm-on','opt-bgm-off'].forEach(id=>{
   const btn = document.getElementById(id);
   const on = id==='opt-bgm-on';
-  const handler = ()=>{ settings.bgmEnabled=on; saveSettings(); updateOptionUI(); };
+  const handler = ()=>{
+    settings.bgmEnabled=on; saveSettings(); updateOptionUI();
+    if (window.SoundBGM) window.SoundBGM.refresh();
+  };
   btn.addEventListener('click', handler);
   btn.addEventListener('touchstart',e=>{e.preventDefault();handler();},{passive:false});
 });
@@ -9883,6 +9939,7 @@ document.getElementById('go-retry').addEventListener('touchstart',e=>{
 document.getElementById('go-menu').addEventListener('click',()=>{
   document.getElementById('gameover').classList.remove('show');
   document.getElementById('mode-select').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.play('menu');
   updatePlayerStatusBar();
   gameRunning=false;
   if (window.Story) window.Story.check('mode_select');
@@ -9891,6 +9948,7 @@ document.getElementById('go-menu').addEventListener('touchstart',e=>{
   e.preventDefault();
   document.getElementById('gameover').classList.remove('show');
   document.getElementById('mode-select').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.play('menu');
   updatePlayerStatusBar();
   gameRunning=false;
   if (window.Story) window.Story.check('mode_select');
@@ -9898,6 +9956,7 @@ document.getElementById('go-menu').addEventListener('touchstart',e=>{
 function goCompleteFirstPlay(){
   document.getElementById('gameover').classList.remove('show');
   document.getElementById('mode-select').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.play('menu');
   updatePlayerStatusBar();
   gameRunning=false;
   if (window.Story) window.Story.check('mode_select');
@@ -9909,6 +9968,7 @@ document.getElementById('go-complete').addEventListener('touchstart', e=>{ e.pre
 document.getElementById('title-play-btn').addEventListener('click', () => {
   document.getElementById('title-screen').classList.add('hide');
   document.getElementById('mode-select').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.play('menu');
   updatePlayerStatusBar();
   if (window.Story) window.Story.check('mode_select');
 });
@@ -9916,6 +9976,7 @@ document.getElementById('title-play-btn').addEventListener('touchstart', e => {
   e.preventDefault();
   document.getElementById('title-screen').classList.add('hide');
   document.getElementById('mode-select').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.play('menu');
   updatePlayerStatusBar();
   if (window.Story) window.Story.check('mode_select');
 },{passive:false});
@@ -9942,11 +10003,13 @@ const _modeToTitle = document.getElementById('mode-to-title');
 _modeToTitle.addEventListener('click', ()=>{
   document.getElementById('mode-select').classList.add('hide');
   document.getElementById('title-screen').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.stop();
 });
 _modeToTitle.addEventListener('touchstart', e=>{
   e.preventDefault();
   document.getElementById('mode-select').classList.add('hide');
   document.getElementById('title-screen').classList.remove('hide');
+  if (window.SoundBGM) window.SoundBGM.stop();
 },{passive:false});
 
 // ── 実績ログタブ（ベルボタン）──────────────────────────
@@ -10112,6 +10175,7 @@ document.getElementById('mode-quick').addEventListener('touchend',e=>{e.preventD
     if(isLockedButton(el)) return; // 未解放ボタンにはボイルを付けない
     el.classList.add('boiling');
     boilStates.set(el, makeState(el));
+    if (window.SoundSE) window.SoundSE.playButtonHold();
   }
   function stopBoil(el){
     if (!el.dataset.boilAlways) { // 常時登録もされている場合は消さない

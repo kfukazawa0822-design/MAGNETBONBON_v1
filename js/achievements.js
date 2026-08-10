@@ -370,6 +370,7 @@
       state.claimedLevel = (typeof playerProgress !== 'undefined') ? playerProgress.level : null;
       persist();
       if (typeof addCoins === 'function') addCoins(tier.ep);
+      if (window.SoundSE) window.SoundSE.playAchievementGet();
       if (typeof updatePlayerStatusBar === 'function') updatePlayerStatusBar();
       updateBadges();
       checkMetaAchievement();
@@ -382,6 +383,7 @@
     state.claimedLevel = (typeof playerProgress !== 'undefined') ? playerProgress.level : null;
     persist();
     if (typeof addCoins === 'function') addCoins(def.ep);
+    if (window.SoundSE) window.SoundSE.playAchievementGet();
     if (typeof updatePlayerStatusBar === 'function') updatePlayerStatusBar();
     updateBadges();
     checkMetaAchievement();

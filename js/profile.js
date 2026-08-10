@@ -53,6 +53,18 @@
     if (typeof saveSaveData === 'function') saveSaveData();
   }
 
+  // 救済措置：有料応援パック②には「限定アイコン」(icon_12) の解放も含まれる想定だが、
+  // 以前のjs/shop.js:grantReward()には付与処理が無く、既に②を購入済みのプレイヤーの
+  // データには icon_12 が反映されていなかった（js/zukan.jsのapplySavedUnlockState()と
+  // 同じ考え方の救済措置）。②購入済みなのにicon_12がまだ無い場合は、起動時にここで解放する
+  (function grantMissingPaidPack2Icon(){
+    if (typeof saveData === 'undefined' || !saveData.shopPurchases) return;
+    if (saveData.shopPurchases['paid_pack_2'] && !saveData.shopPurchases['icon_12']){
+      saveData.shopPurchases['icon_12'] = true;
+      persist();
+    }
+  })();
+
   function formatPlayTime(sec){
     sec = Math.floor(sec || 0);
     const h = Math.floor(sec / 3600);
@@ -129,12 +141,17 @@
     }
   }
 
-  // 所持しているアイコンID一覧（デフォルト写真 + ガチャで獲得した分）を返す。
+  // 所持しているアイコンID一覧（デフォルト写真 + ガチャで獲得した分 + 有料応援パック②の限定アイコン）を返す。
   // 表示順は獲得順ではなく、icon_00→icon_12の番号順に並べ替える
   // （例：05→09→02の順で獲得しても、選択画面には00→02→05→09の順で並ぶ）
   function ownedIconIds(){
     const gachaOwned = (typeof saveData !== 'undefined' && Array.isArray(saveData.ownedIcons)) ? saveData.ownedIcons : [];
     const ids = [DEFAULT_ICON_ID, ...gachaOwned];
+    // icon_12はガチャの抽選対象(ICON_GACHA_POOL)には含まれない特別枠。
+    // 有料応援パック②購入で直接解放される（js/shop.js:grantReward参照）
+    if (typeof saveData !== 'undefined' && saveData.shopPurchases && saveData.shopPurchases['icon_12']){
+      ids.push('icon_12');
+    }
     return ids.sort((a, b) => {
       const na = parseInt(a.replace(/[^0-9]/g, ''), 10);
       const nb = parseInt(b.replace(/[^0-9]/g, ''), 10);
