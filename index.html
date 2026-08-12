@@ -9607,6 +9607,17 @@ function afterSaveDataReset(){
     const el = document.getElementById(id);
     if (el) el.classList.add('hide');
   });
+  // ③ コレクション／ショップ画面は、js/collection.js・js/shop.jsが#player-status-barの
+  //   display をJSで直接上書きして表示状態を保っている（openCollection/openShop等）。
+  //   これらの画面を上のように直接hideクラスで閉じただけだと、本来の「閉じるボタン」経由
+  //   （closeCollection/closeShop）でしか行われないこの上書きの解除がスキップされてしまい、
+  //   #player-status-barのinline style.displayが'flex'のまま残ってしまう。
+  //   その状態でリセット後にゲームを開始すると、#mode-select.hide + #player-status-bar の
+  //   CSSルールよりinline styleの方が優先されてしまうため、プレイ中も上部UIが消えない
+  //   バグになる（実際に「コレクション画面から設定→初期化」の流れで再現した）。
+  //   ここで明示的に上書きを解除し、通常のCSS制御に戻しておく。
+  const statusBarAfterReset = document.getElementById('player-status-bar');
+  if (statusBarAfterReset) statusBarAfterReset.style.display = '';
   // 博士ストーリー/チュートリアルの各種ポップも開いていれば閉じる
   [
     'story-doctor-overlay','story-tutorial-overlay','story-name-overlay','story-skill-grant-overlay',

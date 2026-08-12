@@ -19,33 +19,33 @@
 (function(){
   // ── SEファイル一覧（種類ごとのファイル名） ─────────────────
   const SE_FILES = {
-    button:         'assets/sound/se/se_button.wav',       // ページ送り以外の画面遷移UIボタン
-    buttonHold:     'assets/sound/se/se_button_hold.wav',   // UIボタン長押し/ホバー（ボイルアニメーション使用ボタンのみ）
-    page:           'assets/sound/se/se_page.wav',          // ページ送りボタン（矢印・ドット）
-    popup:          'assets/sound/se/se_popup.wav',         // 詳細ポップを開く時（図鑑セル／チュートリアル一覧カードのみ）
-    tutorial:       'assets/sound/se/se_tutorial.wav',      // チュートリアルポップのタップ進行
-    doctor:         'assets/sound/se/se_doctor.wav',        // 博士セリフのタップ進行
-    bombDefault:    'assets/sound/se/se_bomb.wav',          // 玉爆発（デフォルト）
-    bombSkin01:     'assets/sound/se/se_bomb_skin01.wav',   // 玉爆発（スキン①）
-    bombSkin02:     'assets/sound/se/se_bomb_skin02.wav',   // 玉爆発（スキン②）
-    bombLimited:    'assets/sound/se/se_bomb_limited.wav',  // 玉爆発（限定スキン）
-    itemGet:        'assets/sound/se/se_item_get.wav',      // アイテム獲得時（バッテリー系以外）
-    batteryHit:     'assets/sound/se/se_battery_hit.wav',   // アイテム：バッテリーのあたり
-    batteryMiss:    'assets/sound/se/se_battery_miss.wav',  // アイテム：バッテリーのハズレ
-    gimmick:        'assets/sound/se/se_gimmick.wav',       // ギミック装置発動時
-    epGet:          'assets/sound/se/se_ep_get.wav',        // リザルト：EP獲得
-    achievementGet: 'assets/sound/se/se_achievement_get.wav', // 実績称号：EP獲得
-    epUse:          'assets/sound/se/se_ep_use.wav',        // ショップ：EP消費
-    skillBlink:     'assets/sound/se/se_skill_blink.wav',
-    skillFreeze:    'assets/sound/se/se_skill_freeze.wav',  // フリーズショット（内部id: bubble）
-    skillSweep:     'assets/sound/se/se_skill_sweep.wav',
-    skillShield:    'assets/sound/se/se_skill_shield.wav',
-    skillTyphoon:   'assets/sound/se/se_skill_typhoon.wav',
-    skillBeacon:    'assets/sound/se/se_skill_beacon.wav',  // ワープビーコン：1回目（設置）
-    skillWarp:      'assets/sound/se/se_skill_warp.wav',    // ワープビーコン：2回目（ワープ実行）
-    skillDash:      'assets/sound/se/se_skill_dash.wav',
-    skillCannon:    'assets/sound/se/se_skill_cannon.wav',
-    skillConvert:   'assets/sound/se/se_skill_convert.wav', // エネルギー変換器
+    button:         'assets/sound/se/se_button.mp3',       // ページ送り以外の画面遷移UIボタン
+    buttonHold:     'assets/sound/se/se_button_hold.mp3',   // UIボタン長押し/ホバー（ボイルアニメーション使用ボタンのみ）
+    page:           'assets/sound/se/se_page.mp3',          // ページ送りボタン（矢印・ドット）
+    popup:          'assets/sound/se/se_popup.mp3',         // 詳細ポップを開く時（図鑑セル／チュートリアル一覧カードのみ）
+    tutorial:       'assets/sound/se/se_tutorial.mp3',      // チュートリアルポップのタップ進行
+    doctor:         'assets/sound/se/se_doctor.mp3',        // 博士セリフのタップ進行
+    bombDefault:    'assets/sound/se/se_bomb.mp3',          // 玉爆発（デフォルト）
+    bombSkin01:     'assets/sound/se/se_bomb_skin01.mp3',   // 玉爆発（スキン①）
+    bombSkin02:     'assets/sound/se/se_bomb_skin02.mp3',   // 玉爆発（スキン②）
+    bombLimited:    'assets/sound/se/se_bomb_limited.mp3',  // 玉爆発（限定スキン）
+    itemGet:        'assets/sound/se/se_item_get.mp3',      // アイテム獲得時（バッテリー系以外）
+    batteryHit:     'assets/sound/se/se_battery_hit.mp3',   // アイテム：バッテリーのあたり
+    batteryMiss:    'assets/sound/se/se_battery_miss.mp3',  // アイテム：バッテリーのハズレ
+    gimmick:        'assets/sound/se/se_gimmick.mp3',       // ギミック装置発動時
+    epGet:          'assets/sound/se/se_ep_get.mp3',        // リザルト：EP獲得
+    achievementGet: 'assets/sound/se/se_achievement_get.mp3', // 実績称号：EP獲得
+    epUse:          'assets/sound/se/se_ep_use.mp3',        // ショップ：EP消費
+    skillBlink:     'assets/sound/se/se_skill_blink.mp3',
+    skillFreeze:    'assets/sound/se/se_skill_freeze.mp3',  // フリーズショット（内部id: bubble）
+    skillSweep:     'assets/sound/se/se_skill_sweep.mp3',
+    skillShield:    'assets/sound/se/se_skill_shield.mp3',
+    skillTyphoon:   'assets/sound/se/se_skill_typhoon.mp3',
+    skillBeacon:    'assets/sound/se/se_skill_beacon.mp3',  // ワープビーコン：1回目（設置）
+    skillWarp:      'assets/sound/se/se_skill_warp.mp3',    // ワープビーコン：2回目（ワープ実行）
+    skillDash:      'assets/sound/se/se_skill_dash.mp3',
+    skillCannon:    'assets/sound/se/se_skill_cannon.mp3',
+    skillConvert:   'assets/sound/se/se_skill_convert.mp3', // エネルギー変換器
   };
 
   // 爆発エフェクトスキンID → SEキー（js/explosionSkins.jsのEXPLOSION_SKIN_DEFSに対応）
