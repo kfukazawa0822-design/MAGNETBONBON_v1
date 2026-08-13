@@ -74,6 +74,7 @@
   const MAX_VOICES_PER_SE = 5; // 同じSEの同時再生数の上限（連鎖などでの音割れ防止）
   const MIN_INTERVAL_MS = 20;  // 同一SEの最短再発動間隔（極端な連打時の負荷対策）
   const lastPlayedAt = {};
+  let buttonHoldSource = null; // ホバー/長押し中のSE（押している間だけループ再生する専用の1本）
 
   function getCtx(){
     if (!audioCtx){
@@ -144,7 +145,31 @@
 
   // ── 個別SE再生関数（index.html本体・各jsファイルから呼び出す） ──────
   function playButton(){ play('button'); }
-  function playButtonHold(){ play('buttonHold'); }
+  // ホバー/長押し中のSEは、他のSEと違い「押されている間だけ」鳴らす必要があるため、
+  // 単発再生ではなくループ再生にして、専用のstopButtonHold()で明示的に止める方式にしている
+  // （単発再生だと、音声ファイル自体の長さ分は指を離した後も鳴り続けてしまう）。
+  function playButtonHold(){
+    if (!seEnabled()) return;
+    const ac = getCtx();
+    if (!ac) return;
+    const buf = buffers['buttonHold'];
+    if (!buf) return;
+    if (buttonHoldSource) return; // 既に鳴っている場合は多重再生しない
+    try{
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(ac.destination);
+      src.start(0);
+      buttonHoldSource = src;
+    }catch(err){ /* 再生失敗はゲームを止めずに無視する */ }
+  }
+  function stopButtonHold(){
+    if (buttonHoldSource){
+      try{ buttonHoldSource.stop(); }catch(err){}
+      buttonHoldSource = null;
+    }
+  }
   function playPage(){ play('page'); }
   function playPopup(){ play('popup'); }
   function playTutorial(){ play('tutorial'); }
@@ -164,7 +189,7 @@
   function playBeaconWarp(){ play('skillWarp'); }
 
   window.SoundSE = {
-    playButton, playButtonHold, playPage, playPopup, playTutorial, playDoctor,
+    playButton, playButtonHold, stopButtonHold, playPage, playPopup, playTutorial, playDoctor,
     playExplosionSE,
     playItemGet, playBatteryHit, playBatteryMiss, playGimmick,
     playEpGet, playAchievementGet, playEpUse,

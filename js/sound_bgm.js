@@ -52,18 +52,29 @@
     if (key === currentKey) return; // 既に同じ曲が流れている場合は何もしない（再スタートによるブツ切れ防止）
     currentKey = key;
 
-    if (!key || !bgmEnabled()){
+    if (!key){
       audioEl.pause();
       return;
     }
     const src = BGM_FILES[key];
     if (!src) return;
     try{
+      // OFF中でも「今流れているべき曲」としてsrcは必ず更新しておく。
+      // ここをbgmEnabled()で早期returnしてしまうと、OFF中にシーン遷移が起きた場合、
+      // audioEl.srcが古い曲のまま更新されず止まってしまい、後でONに戻した瞬間に
+      // refresh()が古い曲を再生してしまう（「オフからオンに戻しても音が戻らない」原因）。
       audioEl.src = src;
       audioEl.currentTime = 0;
+    }catch(err){ return; /* ファイル未配置などはここで無視 */ }
+
+    if (!bgmEnabled()){
+      audioEl.pause(); // OFF中は読み込むだけで再生はしない
+      return;
+    }
+    try{
       const p = audioEl.play();
       if (p && typeof p.catch === 'function') p.catch(()=>{}); // 解禁前の自動再生ブロックは無視（unlock後に再試行される設計）
-    }catch(err){ /* ファイル未配置・再生失敗はゲームを止めずに無視する */ }
+    }catch(err){ /* 再生失敗はゲームを止めずに無視する */ }
   }
 
   function stop(){

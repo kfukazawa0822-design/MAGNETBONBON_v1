@@ -10193,6 +10193,7 @@ document.getElementById('mode-quick').addEventListener('touchend',e=>{e.preventD
       boilStates.delete(el);
     }
     el.classList.remove('boiling');
+    if (window.SoundSE) window.SoundSE.stopButtonHold();
   }
 
   BTN_IDS.forEach(id=>{
