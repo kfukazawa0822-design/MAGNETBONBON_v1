@@ -513,6 +513,10 @@
       if (doctorBubbleEl) doctorBubbleEl.classList.add('slide-in');
       if (doctorPortraitEl) doctorPortraitEl.classList.add('slide-in');
       if (window.BoilFX && doctorBubbleEl) window.BoilFX.register(doctorBubbleEl);
+      // セリフ（吹き出し）が実際にスライドインして画面に現れるこのタイミングでSEを鳴らす
+      // （テキスト自体はこの1秒前にrenderDoctorPage()で既にセットされているが、画面上は
+      //  まだ暗転したオーバーレイの裏に隠れているため、見た目上「出現した」瞬間はここになる）
+      if (window.SoundSE) window.SoundSE.playDoctor();
     }, 1000);
   }
   function renderDoctorPage(step){
@@ -535,13 +539,15 @@
       finishActiveStep();
     } else {
       renderDoctorPage(step);
+      // 2ページ目以降は登場演出（1秒の待ち）が無く、タップした瞬間に次のセリフが
+      // そのまま画面に表示されるので、ここでSEを鳴らす（＝テキストが出現するタイミング）
+      if (window.SoundSE) window.SoundSE.playDoctor();
     }
   }
   if (doctorOv){
     doctorOv.addEventListener('click', () => {
       if (doctorEntering) return; // 登場演出中はタップしても進めない
       if (activeStep && activeStep.type === 'doctor'){
-        if (window.SoundSE) window.SoundSE.playDoctor();
         advanceDoctor(activeStep);
       }
     });
