@@ -2228,9 +2228,12 @@ canvas { display:block; width:100%; height:100%; }
   50%     { box-shadow:0 0 10px rgba(255,215,0,0.85); }
 }
 
-/* ── 全体マップ（Pause）：見出しラベルは廃止。デザインは後日変更予定のためこのまま ── */
+/* ── 全体マップ（Pause）：見出しラベルは廃止。
+   2026-08〜：土台デザインを白背景＋黒の手描き二重枠に変更（drawPauseMapFrame参照）。
+   枠線はcanvas側で直接描画するため、CSS側には枠を付けない（角丸も直線的な手描き枠と
+   合わないため外している） ── */
 #pause-map-canvas {
-  border-radius:6px; border:1.5px solid rgba(26,26,26,0.25); display:block;
+  display:block;
   margin-bottom:10px;
 }
 
@@ -5392,40 +5395,82 @@ function drawPauseMap() {
   if (itemsListEl) itemsListEl.style.width = Math.max(0, sz - ITEMS_LIST_INSET * 2) + 'px';
 
   const c = cvs.getContext('2d');
-  const scaleX = sz / WORLD_W;
-  const scaleY = sz / WORLD_H;
 
-  // 背景
-  c.fillStyle = 'rgba(0,15,8,0.95)';
+  // 背景（2026-08〜：デザイン一新。白背景＋黒の手描き二重枠に変更。
+  // 枠線は「やめる/オプション」等のボタンと同じ手描き技法（直線区間を少しだけガタつかせ、
+  // 角は本物のカーブで丸める）で描き、ボイル（常時揺れ）はさせず静止させる。
+  // マップの中身（グリッド・玉・岩・アイテム等）は外枠と内枠の間の余白には描かず、
+  // 内枠の内側だけに収まるようクリップして描画する）
+  c.fillStyle = '#ffffff';
   c.fillRect(0, 0, sz, sz);
+
+  const frame = getPauseMapFrame(sz);
+  const inner = frame.innerInset;
+  const contentSz = sz - inner * 2;
+  const scaleX = contentSz / WORLD_W;
+  const scaleY = contentSz / WORLD_H;
+
+  c.save();
+  c.translate(inner, inner);
+  clipToHandDrawnRoundedRect(c, frame.innerPath); // 内枠の内側だけに中身を収める
 
   // グリッド
   c.strokeStyle = 'rgba(0,255,100,0.07)';
   c.lineWidth = 0.5;
   const gs = 80;
   for (let gx = 0; gx < WORLD_W; gx += gs * 4) {
-    c.beginPath(); c.moveTo(gx*scaleX, 0); c.lineTo(gx*scaleX, sz); c.stroke();
+    c.beginPath(); c.moveTo(gx*scaleX, 0); c.lineTo(gx*scaleX, contentSz); c.stroke();
   }
   for (let gy = 0; gy < WORLD_H; gy += gs * 4) {
-    c.beginPath(); c.moveTo(0, gy*scaleY); c.lineTo(sz, gy*scaleY); c.stroke();
+    c.beginPath(); c.moveTo(0, gy*scaleY); c.lineTo(contentSz, gy*scaleY); c.stroke();
   }
 
   // 停滞ゾーン
-  // 穴
+  // 穴（発電装置ギミック）：2026-08〜：実物のギミック本体に寄せた「黒い9本トゲの
+  // バースト形」に変更。起動中はその上に白い「！」を重ねる（従来の緑/グレーの色分けは廃止）
   for (const h of holes) {
-    c.beginPath();
-    c.arc(h.x*scaleX, h.y*scaleY, Math.max(3, h.r*scaleX), 0, Math.PI*2);
     const isActive = holeActiveIdx >= 0 && holes[holeActiveIdx] === h;
-    c.fillStyle = isActive ? 'rgba(40,200,120,0.2)' : 'rgba(40,40,60,0.5)';
-    c.fill();
-    c.strokeStyle = isActive ? 'rgba(40,200,120,0.6)' : 'rgba(80,85,110,0.4)';
-    c.lineWidth = 1; c.stroke();
+    const outerR = Math.max(4, h.r * scaleX);
+    drawGimmickBurst(c, h.x*scaleX, h.y*scaleY, outerR, outerR*0.52, 9, '#1a1a1a');
+    if (isActive) {
+      // ミニマップは極小サイズのため、フォント（！）は潰れて視認できない。
+      // 代わりに「！」を太い棒＋丸のプリミティブ図形として直接描画し、
+      // どんなサイズでも黒い星の上にくっきり出る白マークにする。
+      const mcx = h.x*scaleX, mcy = h.y*scaleY;
+      const markR = Math.max(outerR * 0.85, 6.5);
+      c.beginPath();
+      c.arc(mcx, mcy, markR, 0, Math.PI * 2);
+      c.fillStyle = '#1a1a1a';
+      c.fill();
+      c.fillStyle = '#ffffff';
+      // 縦棒と丸を、常に黒円の内側に収まる比率で配置（極小サイズでも
+      // アンチエイリアスで消えないよう、太さは絶対px下限を確保する）
+      const stemW = Math.max(2.2, markR * 0.4);
+      const stemH = markR * 0.9;
+      const gap = markR * 0.22;
+      const dotR = Math.max(1.4, markR * 0.28);
+      const totalH = stemH + gap + dotR * 2;
+      const stemTop = mcy - totalH / 2;
+      const rr = stemW / 2;
+      const stemBottom = stemTop + stemH;
+      c.beginPath();
+      c.moveTo(mcx - rr, stemTop + rr);
+      c.arc(mcx, stemTop + rr, rr, Math.PI, 0);
+      c.lineTo(mcx + rr, stemBottom);
+      c.arc(mcx, stemBottom, rr, 0, Math.PI);
+      c.closePath();
+      c.fill();
+      c.beginPath();
+      c.arc(mcx, stemBottom + gap + dotR, dotR, 0, Math.PI * 2);
+      c.fill();
+    }
   }
 
-  // 磁晶核（密度ヒートマップ）
+  // 磁晶核（密度）：2026-08〜：別レイヤーだったヒートマップを廃止し、玉自体の色に
+  // 密度を反映させる（孤立=青→密集地ほど赤っぽく変化）。まず密度グリッドだけ計算する
   const cellSz = 6;
-  const cols = Math.ceil(sz / cellSz);
-  const rows = Math.ceil(sz / cellSz);
+  const cols = Math.ceil(contentSz / cellSz);
+  const rows = Math.ceil(contentSz / cellSz);
   const heat = new Float32Array(cols * rows);
   for (const m of marbles) {
     if (!m.alive) continue;
@@ -5436,38 +5481,31 @@ function drawPauseMap() {
     }
   }
   const maxH = Math.max(1, ...heat);
-  for (let cy2 = 0; cy2 < rows; cy2++) {
-    for (let cx2 = 0; cx2 < cols; cx2++) {
-      const v = heat[cy2 * cols + cx2];
-      if (v === 0) continue;
-      const t = v / maxH;
-      const r2 = Math.floor(t * 255);
-      const g2 = Math.floor((1 - t) * 180 + 30);
-      c.fillStyle = `rgba(${r2},${g2},60,${0.3 + t * 0.65})`;
-      c.fillRect(cx2 * cellSz, cy2 * cellSz, cellSz, cellSz);
-    }
-  }
 
-  // 磁晶核ドット
+  // 磁晶核ドット：密度に応じて玉本体の色を変える（青→緑→橙→赤橙→マゼンタ）
   for (const m of marbles) {
     if (!m.alive) continue;
+    const mx = m.x * scaleX, my = m.y * scaleY;
+    const cx2 = Math.min(cols-1, Math.max(0, Math.floor(mx / cellSz)));
+    const cy2 = Math.min(rows-1, Math.max(0, Math.floor(my / cellSz)));
+    const t = heat[cy2 * cols + cx2] / maxH;
     c.beginPath();
-    c.arc(m.x * scaleX, m.y * scaleY, 1.5, 0, Math.PI * 2);
-    c.fillStyle = `hsla(${m.hue},70%,70%,0.7)`; c.fill();
+    c.arc(mx, my, 2.5, 0, Math.PI * 2);
+    c.fillStyle = marbleHeatColor(t); c.fill();
   }
 
-  // 岩
+  // 岩：2026-08〜：単純な円ではなく、本編と同じ流体シェイプ（rk.pts）を黒で描画
   for (const rk of rocks) {
-    if (!rk.alive) continue;
-    c.beginPath();
-    c.arc(rk.x * scaleX, rk.y * scaleY, Math.max(2, rk.r * scaleX), 0, Math.PI * 2);
-    c.fillStyle = 'rgba(150,140,130,0.85)'; c.fill();
+    if (!rk.alive || !rk.pts) continue;
+    drawMinimapBlob(c, rk.pts, rk.x*scaleX, rk.y*scaleY, scaleX, '#1a1a1a');
   }
 
-  // アイテム
+  // アイテム：2026-08〜：単純な塗り丸ではなく、二重丸（外側リング＋中心の小さい塗り丸）に変更
   for (const item of items) {
-    c.beginPath();
-    c.arc(item.x * scaleX, item.y * scaleY, 2.5, 0, Math.PI * 2);
+    const ix = item.x * scaleX, iy = item.y * scaleY;
+    c.beginPath(); c.arc(ix, iy, 4, 0, Math.PI * 2);
+    c.strokeStyle = item.def.color; c.lineWidth = 1.4; c.stroke();
+    c.beginPath(); c.arc(ix, iy, 1.7, 0, Math.PI * 2);
     c.fillStyle = item.def.color; c.fill();
   }
 
@@ -5478,18 +5516,167 @@ function drawPauseMap() {
   c.beginPath(); c.arc(px, py, mr, 0, Math.PI * 2);
   const glowCol = player.magnet === 'S' ? '255,80,120' : '80,160,255';
   c.strokeStyle = `rgba(${glowCol},0.2)`; c.lineWidth = 1; c.stroke();
-  // 本体
+  // 本体：2026-08〜：白→黒に変更
   c.beginPath(); c.arc(px, py, 4, 0, Math.PI * 2);
-  c.fillStyle = '#ffffff'; c.fill();
-  // 向き
+  c.fillStyle = '#1a1a1a'; c.fill();
+  // 向き：2026-08〜：白→黒に変更
   c.beginPath();
   c.moveTo(px, py);
   c.lineTo(px + Math.cos(player.angle) * 9, py + Math.sin(player.angle) * 9);
-  c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 1.5; c.stroke();
+  c.strokeStyle = 'rgba(26,26,26,0.9)'; c.lineWidth = 1.5; c.stroke();
 
-  // 外枠
-  c.strokeStyle = 'rgba(0,255,100,0.25)';
-  c.lineWidth = 1; c.strokeRect(0, 0, sz, sz);
+  c.restore(); // クリップ・平行移動を解除してから外枠を描く
+
+  // 外枠：黒の手描き風・二重線（「やめる/オプション」ボタンの手描き枠と同じ技法。
+  // 直線区間はごく少ない頂点数・小さいジッターだけで軽くガタつかせ、角は本物の
+  // 曲線で丸める。ボタンより少し四角寄りの控えめな丸みにしている。1回生成した形を
+  // サイズが変わるまで使い回すので、開閉のたびに線の形が変わってしまう
+  // （＝ボイルして見える）ことはない）
+  drawHandDrawnRoundedRect(c, frame.outerPath, '#1a1a1a', 2.4);
+  drawHandDrawnRoundedRect(c, frame.innerPath, '#1a1a1a', 1.6);
+}
+
+// 磁晶核の密度カラー（2026-08〜）：孤立=青→密集地ほど赤っぽく変化する5色グラデーション
+// （青→緑→橙→赤橙→マゼンタ）。tは0(密度最小)〜1(密度最大)。
+const MARBLE_HEAT_STOPS = [
+  [33,150,243],  // 青（孤立）
+  [139,195,74],  // 緑
+  [255,160,0],   // 橙
+  [244,81,30],   // 赤橙
+  [213,0,249],   // マゼンタ（最密集）
+];
+function marbleHeatColor(t){
+  t = Math.max(0, Math.min(1, t));
+  const n = MARBLE_HEAT_STOPS.length;
+  const scaled = t * (n - 1);
+  const i0 = Math.floor(scaled);
+  const i1 = Math.min(n - 1, i0 + 1);
+  const frac = scaled - i0;
+  const a = MARBLE_HEAT_STOPS[i0], b = MARBLE_HEAT_STOPS[i1];
+  const r = Math.round(a[0] + (b[0]-a[0]) * frac);
+  const g = Math.round(a[1] + (b[1]-a[1]) * frac);
+  const bl = Math.round(a[2] + (b[2]-a[2]) * frac);
+  return `rgb(${r},${g},${bl})`;
+}
+
+// 岩の流体シェイプ（2026-08〜）：本編のpathSmoothBlob(genBlobLoop由来のrk.ptsを
+// quadraticCurveToで滑らかに繋ぐ)と全く同じ技法で、ミニマップの縮尺・位置に合わせて描く。
+// rk.ptsは岩の中心からの相対座標（本編と同じ単位）なので、ox/oyで中心位置へ、scaleで
+// ミニマップの縮尺へ変換するだけでよい。
+function drawMinimapBlob(c, pts, ox, oy, scale, fillStyle){
+  const n = pts.length;
+  if (n < 3) return;
+  const scaled = pts.map(p => [p[0]*scale + ox, p[1]*scale + oy]);
+  const midOf = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
+  const m0 = midOf(scaled[n-1], scaled[0]);
+  c.beginPath();
+  c.moveTo(m0[0], m0[1]);
+  for (let i = 0; i < n; i++) {
+    const cur = scaled[i], next = scaled[(i+1) % n];
+    const m = midOf(cur, next);
+    c.quadraticCurveTo(cur[0], cur[1], m[0], m[1]);
+  }
+  c.closePath();
+  c.fillStyle = fillStyle;
+  c.fill();
+}
+
+// ギミック（発電装置）の本体形（2026-08〜）：本編の見た目に寄せた、N本トゲの
+// バースト（星形）を描く。起動中の「！」表示は呼び出し側で重ねる。
+function drawGimmickBurst(c, cx, cy, outerR, innerR, spikes, fillStyle){
+  c.beginPath();
+  const total = spikes * 2;
+  for (let i = 0; i < total; i++) {
+    const r = (i % 2 === 0) ? outerR : innerR;
+    const ang = (i / total) * Math.PI * 2 - Math.PI/2;
+    const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r;
+    if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+  }
+  c.closePath();
+  c.fillStyle = fillStyle;
+  c.fill();
+}
+
+// ミニマップの手描き風二重枠：外枠1本＋内枠1本。sz（マップの一辺の長さ）が変わった時だけ
+// 形を作り直し、それ以外は同じ形をそのまま使い回すことで、開閉のたびに線の形が変わって
+// しまう（＝ボイルして見える）のを防いでいる。内枠は「マップの中身を収める境界」も兼ねる。
+let pauseMapFrameCache = null;
+function getPauseMapFrame(sz){
+  if (!pauseMapFrameCache || pauseMapFrameCache.sz !== sz) {
+    // FB反映（2026-08〜）：①線のジッターが大きすぎた→絶対px基準の小さい固定値に変更
+    // （sz比例だと大きいマップほど揺れも大きくなってしまっていた）。
+    // ②二重線の間隔が広すぎた→約4pxの固定ギャップに縮小。
+    // ③その分は外枠を内側に寄せるのではなく、内枠を外側に広げて確保する
+    // （＝中身が入る面積をできるだけ大きく保つ）。
+    const outerInset = Math.min(4, Math.max(2, sz * 0.012));
+    const gap        = 4; // 二重線の間隔は約4px固定
+    const innerInset = outerInset + gap;
+    const cornerR    = Math.min(20, Math.max(6, sz * 0.06)); // ボタンより控えめな丸み
+    const jitter     = 0.9; // 絶対px基準の小さいジッター（サイズに比例させない）
+    pauseMapFrameCache = {
+      sz, innerInset,
+      outerPath: buildHandDrawnRoundedRectPath(sz, outerInset, cornerR, jitter),
+      innerPath: buildHandDrawnRoundedRectPath(sz, innerInset, cornerR, jitter),
+    };
+  }
+  return pauseMapFrameCache;
+}
+// 1辺ぶんの頂点列を生成する（両端は隣の辺・角と正確に繋がるよう固定し、間の点だけ
+// ごくわずかに前後・左右へジッターさせる＝ボタンの手描き線と同じ「軽いガタつき」）
+function buildHandDrawnRectSidePoints(x1, y1, x2, y2, n, jitter){
+  const pts = [];
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const perpX = -uy, perpY = ux;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const bx = x1 + dx * t, by = y1 + dy * t;
+    if (i === 0 || i === n) { pts.push({x:bx, y:by}); continue; } // 端点は角に正確に接続させる
+    const along = (Math.random()-0.5) * jitter * 0.6;
+    const perp  = (Math.random()-0.5) * jitter * 2;
+    pts.push({ x: bx + ux*along + perpX*perp, y: by + uy*along + perpY*perp });
+  }
+  return pts;
+}
+// 角丸四角形の手描き風パス（4辺の頂点列＋角の実座標）を構築する
+function buildHandDrawnRoundedRectPath(sz, inset, cornerR, jitter){
+  const x0 = inset, y0 = inset, x1 = sz - inset, y1 = sz - inset;
+  const n = 5; // 1辺あたりの分割数（少なめ＝ボタンと同じ「緩やかな」ガタつき）
+  return {
+    x0, y0, x1, y1, cornerR,
+    top:    buildHandDrawnRectSidePoints(x0+cornerR, y0,        x1-cornerR, y0,        n, jitter),
+    right:  buildHandDrawnRectSidePoints(x1,        y0+cornerR, x1,        y1-cornerR, n, jitter),
+    bottom: buildHandDrawnRectSidePoints(x1-cornerR, y1,        x0+cornerR, y1,        n, jitter),
+    left:   buildHandDrawnRectSidePoints(x0,        y1-cornerR, x0,        y0+cornerR, n, jitter),
+  };
+}
+// 角丸四角形の手描き風パスを、canvasの現在のパスとして構築する（stroke/clip共通）
+function traceHandDrawnRoundedRect(c, path){
+  const { x0, y0, x1, y1, top, right, bottom, left } = path;
+  c.beginPath();
+  c.moveTo(top[0].x, top[0].y);
+  for (let i = 1; i < top.length; i++) c.lineTo(top[i].x, top[i].y);
+  c.quadraticCurveTo(x1, y0, right[0].x, right[0].y); // 右上の角
+  for (let i = 1; i < right.length; i++) c.lineTo(right[i].x, right[i].y);
+  c.quadraticCurveTo(x1, y1, bottom[0].x, bottom[0].y); // 右下の角
+  for (let i = 1; i < bottom.length; i++) c.lineTo(bottom[i].x, bottom[i].y);
+  c.quadraticCurveTo(x0, y1, left[0].x, left[0].y); // 左下の角
+  for (let i = 1; i < left.length; i++) c.lineTo(left[i].x, left[i].y);
+  c.quadraticCurveTo(x0, y0, top[0].x, top[0].y); // 左上の角、始点に戻って閉じる
+  c.closePath();
+}
+function drawHandDrawnRoundedRect(c, path, strokeStyle, lineWidth){
+  traceHandDrawnRoundedRect(c, path);
+  c.strokeStyle = strokeStyle;
+  c.lineWidth = lineWidth;
+  c.lineJoin = 'round';
+  c.lineCap = 'round';
+  c.stroke();
+}
+function clipToHandDrawnRoundedRect(c, path){
+  traceHandDrawnRoundedRect(c, path);
+  c.clip();
 }
 
 // ── メインループ ──────────────────────────────────
