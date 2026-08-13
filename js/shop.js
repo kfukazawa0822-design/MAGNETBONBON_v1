@@ -12,10 +12,16 @@
 //   - スキル購入は追加でsaveData.unlockedSkillsにもidを積む（スキル選択画面がここを見る）
 //   - エンドレスモード解放: saveData.endlessUnlocked
 //   - アイコンガチャ: saveData.ownedIcons（重複無し、最大12でSOLD OUT）
-//   - 無料応援パック: saveData.freePackClaimedDate（1日1回）
+//   - 無料応援パック: saveData.freePackClaimedDate（1日1回。端末のローカル日付が変わるまで
+//     再受け取り不可。isPurchased()内で「今日の日付と一致するか」だけを見て判定している）
 //
 // 【まだ実装できていないこと（次のフェーズで対応）】
-//   - 実際の課金決済／広告SDK連携（①ページの2商品は、現状「ダミーで即成功」扱い）
+//   - 実際の課金決済（有料応援パック①②）／実際の広告SDK連携（無料応援パックの動画視聴）
+//     → 無料応援パックは、動画視聴という「入れ物」だけ先行して用意済み（js/ads.js参照）。
+//       現在は仮のカウントダウン画面が表示されるだけだが、視聴完了/中断のコールバックは
+//       本番のAdMob等と同じ形になっているので、js/ads.jsの中身だけ差し替えれば繋がる想定。
+//       有料応援パック①②の決済は、現状も「ダミーで即成功」扱いのまま。
+//   - 無料応援パックの「バフ」部分の内容（applyFreePackBuff関数。詳しい仕様は別途相談）
 //   - カスタム購入品（エフェクト／玉スキン／機体スキン）の、実際の見た目切り替えUI
 //     → 今回は「購入済みにする」ところまで。見た目に反映する仕組みは別途相談。
 // ==========================================================================
@@ -211,6 +217,7 @@
   ];
 
   let currentPage = 0;
+  let freePackAdInProgress = false; // 無料応援パックの広告視聴中フラグ（多重タップでの二重視聴を防止）
 
   function todayStr(){
     const d = new Date();
@@ -299,6 +306,17 @@
     if (typeof updatePlayerStatusBar === 'function') updatePlayerStatusBar();
   }
 
+  // 無料応援パックの「バフ」：次にプレイを1回終える（20秒以上プレイする）まで、
+  // 獲得経験値が2倍になる。実際の付与・消費・経験値計算側の処理はindex.html側
+  // （saveData.buffs.xpDoubleNextPlay／triggerGameOver内）で行う。
+  // モード選択画面のクイックプレイ／エンドレスモードボタンのピンク発光演出も
+  // このフラグを見て切り替える（updateBuffGlowUI、index.html側で定義）。
+  function applyFreePackBuff(){
+    if (!saveData.buffs) saveData.buffs = { xpDoubleNextPlay:false };
+    saveData.buffs.xpDoubleNextPlay = true;
+    if (typeof updateBuffGlowUI === 'function') updateBuffGlowUI();
+  }
+
   function grantReward(item){
     if (item.kind === 'endless_unlock'){
       saveData.endlessUnlocked = true;
@@ -308,8 +326,10 @@
       if (!saveData.unlockedSkills.includes(item.skillId)) saveData.unlockedSkills.push(item.skillId);
       pendingStoryContext = 'skill_purchased'; // js/story.js: favorite_skill_tutorial
     } else if (item.kind === 'free'){
-      saveData.freePackClaimedDate = todayStr();
-      addCoins(50); // 無料パックの獲得コイン（バフ部分は今後の課題）
+      saveData.freePackClaimedDate = todayStr(); // ここで日付を記録することで「1日1回」の縛りが成立する（isPurchased参照）
+      addCoins(100); // 無料パックの獲得コイン（100EP）
+      if (window.SoundSE) window.SoundSE.playAchievementGet(); // FBにより、広告視聴後100EP獲得の瞬間にse_achievement_getを流用
+      applyFreePackBuff(); // バフ：次の1プレイだけ経験値2倍（saveData.buffs.xpDoubleNextPlay）
       pendingStoryContext = 'free_pack_claimed'; // js/story.js: buff_tutorial
     } else if (item.kind === 'icon_gacha'){
       const owned = saveData.ownedIcons || (saveData.ownedIcons = []);
@@ -442,11 +462,29 @@
     if (isPurchased(item)) return;
 
     if (item.kind === 'free'){
-      // 無料受け取りは確認ポップを挟まずそのまま
-      grantReward(item);
-      showRewardPopup(item);
-      renderGrid();
-      maybeShowAfterMsg(item);
+      // 無料応援パック：確認ポップは挟まないが、代わりに動画視聴（リワード広告）を挟む。
+      // 広告SDKはまだ未接続なので、js/ads.jsの仮実装（カウントダウン画面）を経由している。
+      // 実際のAdMob接続後もここは変更不要になる想定（差し替えはjs/ads.js側で行う）。
+      if (freePackAdInProgress) return; // ボタン連打などでの多重視聴を防止
+      if (!window.Ads || typeof window.Ads.showRewarded !== 'function'){
+        // Adsが未初期化（読み込み順ミス等）の場合の保険。動画無しで即受け取りにフォールバックする
+        console.warn('[shop.js] window.Adsが見つからないため、動画無しで即受け取りにフォールバックします。');
+        grantReward(item);
+        showRewardPopup(item);
+        renderGrid();
+        maybeShowAfterMsg(item);
+        return;
+      }
+      freePackAdInProgress = true;
+      window.Ads.showRewarded((completed) => {
+        freePackAdInProgress = false;
+        if (!completed) return; // 途中で広告を閉じた場合は何も起きない（後で改めて受け取りに来られる）
+        if (isPurchased(item)) { renderGrid(); return; } // 視聴中に日付が変わった等の想定外に備えた保険（二重受け取り防止）
+        grantReward(item);
+        showRewardPopup(item);
+        renderGrid();
+        maybeShowAfterMsg(item);
+      });
       return;
     }
 

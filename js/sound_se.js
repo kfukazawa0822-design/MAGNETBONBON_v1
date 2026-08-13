@@ -34,7 +34,8 @@
     batteryMiss:    'assets/sound/se/se_battery_miss.mp3',  // アイテム：バッテリーのハズレ
     gimmick:        'assets/sound/se/se_gimmick.mp3',       // ギミック装置発動時
     epGet:          'assets/sound/se/se_ep_get.mp3',        // リザルト：EP獲得
-    achievementGet: 'assets/sound/se/se_achievement_get.mp3', // 実績称号：EP獲得
+    achievementGet: 'assets/sound/se/se_achievement_get.mp3', // 実績称号：EP獲得（コレクション画面で受け取った瞬間）
+    achievementUnlock: 'assets/sound/se/se_achievement_unlock.mp3', // 実績解除トースト（画面左下からポップがスライドしてくる瞬間）
     epUse:          'assets/sound/se/se_ep_use.mp3',        // ショップ：EP消費
     skillBlink:     'assets/sound/se/se_skill_blink.mp3',
     skillFreeze:    'assets/sound/se/se_skill_freeze.mp3',  // フリーズショット（内部id: bubble）
@@ -183,6 +184,8 @@
   function playGimmick(){ play('gimmick'); }
   function playEpGet(){ play('epGet'); }
   function playAchievementGet(){ play('achievementGet'); }
+  // 実績解除トースト用（js/achievements.js: createToastElementから、ポップがスライドインする瞬間に呼ばれる）
+  function playAchievementUnlock(){ play('achievementUnlock'); }
   function playEpUse(){ play('epUse'); }
   function playSkill(skillId){ play(SKILL_ID_SE[skillId]); }
   function playBeaconSet(){ play('skillBeacon'); }
@@ -192,7 +195,7 @@
     playButton, playButtonHold, stopButtonHold, playPage, playPopup, playTutorial, playDoctor,
     playExplosionSE,
     playItemGet, playBatteryHit, playBatteryMiss, playGimmick,
-    playEpGet, playAchievementGet, playEpUse,
+    playEpGet, playAchievementGet, playAchievementUnlock, playEpUse,
     playSkill, playBeaconSet, playBeaconWarp,
   };
   // 既存のtriggerExplosion()は `typeof playExplosionSE === 'function'` というグローバル関数名を

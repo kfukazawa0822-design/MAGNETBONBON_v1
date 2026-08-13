@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>MAGNET BON BON</title>
+<!-- Webゲームとしてホーム画面に追加/インストールできるようにするためのPWAマニフェスト。
+     Capacitor導入後（ネイティブアプリ化）はここは使われなくなるが、削除しなくても問題は起きない。 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1a1a">
+<!-- iOS Safariはmanifest.jsonのicon指定を読まないため、apple-touch-iconを別途指定しておく -->
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html,body { width:100%; height:100%; background:#ffffff; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
@@ -722,6 +729,18 @@ canvas { display:block; width:100%; height:100%; }
 }
 .mode-btn.story-glow, .mode-sub-btn.story-glow {
   animation:storyGlowPulse 1.6s ease-in-out infinite;
+}
+
+/* 無料応援パックのバフ（次の1プレイ経験値2倍）が有効な間の発光演出。
+   仕組みはstory-glowと同じだが、「新機能に気づいて」ではなく「バフが乗っている」を
+   伝えたいので、混同しないようビビットピンクにしている（js/shop.js: applyFreePackBuff／
+   index.html: updateBuffGlowUI・triggerGameOverで有効/消費を切り替える）。 */
+@keyframes buffGlowPulse {
+  0%,100% { box-shadow:0 0 0 rgba(255,20,147,0); }
+  50%     { box-shadow:0 0 18px 5px rgba(255,20,147,0.75); }
+}
+.mode-btn.buff-glow {
+  animation:buffGlowPulse 1.6s ease-in-out infinite;
 }
 .mode-sub-soon {
   font-size:8px; letter-spacing:1px; color:#bbb;
@@ -1446,6 +1465,35 @@ canvas { display:block; width:100%; height:100%; }
 #shop-page-intro-text { font-size:13px; font-weight:bold; color:#1a1a1a; margin-bottom:14px; line-height:1.6; }
 #shop-page-intro-tap { font-size:10px; color:#999; }
 
+/* ── リワード広告（動画）プレースホルダー画面 ──
+   実際の広告SDK（AdMob等）はCapacitor導入後に接続予定。今はここを「動画視聴の代わり」として
+   使い、視聴完了時に何が起こるか／1日1回の縛りの動作を先行して作り込む（js/ads.js参照）。
+   ショップの各種ポップ（confirm/error/page-introは410）より確実に手前へ出したいので500にしている。 */
+#ad-placeholder-overlay {
+  position:fixed; inset:0; background:#000; z-index:500;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 0.15s ease;
+}
+#ad-placeholder-overlay.show { opacity:1; pointer-events:auto; }
+#ad-placeholder-label {
+  color:#fff; font-family:'Courier New',-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;
+  font-size:12px; letter-spacing:0.05em; opacity:0.6; margin-bottom:10px;
+}
+#ad-placeholder-timer {
+  color:#fff; font-family:'Courier New',monospace; font-size:44px; font-weight:bold; margin-bottom:26px;
+}
+#ad-placeholder-desc {
+  color:#ccc; font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;
+  font-size:12px; margin-bottom:40px; text-align:center; padding:0 30px; line-height:1.7;
+}
+/* 右上の×：視聴中はいつでも押せるが、最後まで見ないと報酬は貰えない（実際のAdMobリワード広告と同じ挙動） */
+#ad-placeholder-close {
+  position:absolute; top:calc(env(safe-area-inset-top, 0px) + 16px); right:16px;
+  width:34px; height:34px; border-radius:50%; border:1.5px solid rgba(255,255,255,0.5);
+  background:rgba(255,255,255,0.08); color:#fff; font-size:16px; line-height:1;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent;
+}
+
 /* ══════════════════════════════════════════════════
    博士ストーリー／チュートリアルポップ（js/story.js）
    ══════════════════════════════════════════════════ */
@@ -1740,7 +1788,16 @@ canvas { display:block; width:100%; height:100%; }
   font-family:'Courier New',-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;
 }
 #go-xp-row { display:flex; align-items:center; gap:8px; }
-#go-xp-label { flex-shrink:0; font-size:10px; letter-spacing:2px; font-weight:bold; color:#1a1a1a; }
+.go-xp-label-group { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+#go-xp-label { font-size:10px; letter-spacing:2px; font-weight:bold; color:#1a1a1a; }
+/* 「EXP×2」バフ表示：見た目・脈動アニメーションはgo-new-record（NEW!ラベル）と同じトーンで
+   揃え、色だけモード選択のバフ発光と合わせてビビットピンクにしている */
+.go-exp-double.hide { display:none; }
+.go-exp-double {
+  font-size:9px; font-weight:bold; letter-spacing:1px; color:#fff;
+  background:#ff1493; padding:2px 7px; border-radius:10px;
+  animation:goNewRecordPulse 1s ease-in-out infinite;
+}
 #go-xp-track {
   flex:1; position:relative; height:11px; border-radius:6px;
   background:#fff; border:1.5px solid #1a1a1a; overflow:hidden;
@@ -2807,7 +2864,10 @@ canvas { display:block; width:100%; height:100%; }
     </div>
     <div id="go-xp-section">
       <div id="go-xp-row">
-        <span id="go-xp-label">EXP</span>
+        <span class="go-xp-label-group">
+          <span id="go-xp-label">EXP</span>
+          <span class="go-exp-double hide" id="go-exp-double">×2</span>
+        </span>
         <div id="go-xp-track"><div id="go-xp-fill"></div></div>
       </div>
     </div>
@@ -2997,6 +3057,15 @@ canvas { display:block; width:100%; height:100%; }
 <!-- ガチャ演出：画面全体を覆う白黒サンバースト（#shop-reward-overlayとは独立したレイヤー。
      z-indexで #player-status-bar より下・#shop-screen より上に位置するよう配置している） -->
 <div id="shop-reward-sunburst"></div>
+
+<!-- リワード広告（動画）プレースホルダー画面：js/ads.js制御。
+     AdMob等の実広告SDKに繋ぐまでの仮実装で、カウントダウン表示→視聴完了時にコールバックを呼ぶ役目だけを担う -->
+<div id="ad-placeholder-overlay">
+  <button id="ad-placeholder-close" aria-label="閉じる">×</button>
+  <div id="ad-placeholder-label">AD（広告プレースホルダー）</div>
+  <div id="ad-placeholder-timer">5</div>
+  <div id="ad-placeholder-desc">これは広告SDK接続前の仮の視聴画面です。<br>最後まで表示すると報酬を受け取れます。</div>
+</div>
 
 <!-- コレクション画面 -->
 <div id="collection-screen" class="hide">
@@ -3364,6 +3433,8 @@ function defaultSaveData() {
     endlessUnlocked: false, // エンドレスモード解放（ショップ初回訪問時のチュートリアル購入で自動true）
     ownedIcons: [],          // アイコンガチャで獲得済みのアイコンid（重複無し、最大12）
     freePackClaimedDate: null, // 無料応援パックを最後に受け取った日付（1日1回のリセット判定用）
+    buffs: { xpDoubleNextPlay: false }, // 一時的なバフ（無料応援パック等で付与）。次の1プレイ終了時に消費される
+
     storyProgress: { nextIndex: 0 }, // 博士ストーリー/チュートリアルの進行状況（js/story.js側で管理）
     storyFlags: {
       shopUnlocked: false, collectionUnlocked: false,
@@ -3396,6 +3467,7 @@ function migrateSaveData(parsed) {
   if (typeof parsed.endlessUnlocked === 'boolean') data.endlessUnlocked = parsed.endlessUnlocked;
   if (Array.isArray(parsed.ownedIcons)) data.ownedIcons = parsed.ownedIcons;
   if (typeof parsed.freePackClaimedDate === 'string') data.freePackClaimedDate = parsed.freePackClaimedDate;
+  if (parsed.buffs && typeof parsed.buffs === 'object') data.buffs = { ...data.buffs, ...parsed.buffs };
   if (parsed.storyProgress && typeof parsed.storyProgress === 'object') data.storyProgress = parsed.storyProgress;
   if (parsed.storyFlags && typeof parsed.storyFlags === 'object') data.storyFlags = { ...data.storyFlags, ...parsed.storyFlags };
   if (parsed.titles && typeof parsed.titles === 'object' && !Array.isArray(parsed.titles)) data.titles = parsed.titles;
@@ -3488,6 +3560,19 @@ function updateZukanLockUI(){
 updateShopLockUI();
 updateCollectionLockUI();
 updateZukanLockUI();
+
+// バフ演出（saveData.buffs.xpDoubleNextPlay）：有効な間、モード選択のクイックプレイ／
+// エンドレスモードのボタンをビビットピンクで発光させ、「次のプレイは経験値2倍」を伝える。
+// 付与時（js/shop.js: applyFreePackBuff）と消費時（triggerGameOver）の両方から呼ばれる。
+// エンドレスモード自体が未解放の間は光らせない（.lockedボタンは押せないため）。
+function updateBuffGlowUI(){
+  const active = !!(saveData.buffs && saveData.buffs.xpDoubleNextPlay);
+  const quickEl = document.getElementById('mode-quick');
+  const endlessEl = document.getElementById('mode-endless');
+  if (quickEl) quickEl.classList.toggle('buff-glow', active);
+  if (endlessEl) endlessEl.classList.toggle('buff-glow', active && !!saveData.endlessUnlocked);
+}
+updateBuffGlowUI();
 
 // ── レベル・経験値・コインシステム ──────────────────
 const LEVEL_UP_BASE_XP  = 100; // Lv1→2 に必要なXP
@@ -4746,7 +4831,10 @@ function useSkill(){
   if(selectedSkillId==='cannon' && cannonCharge) return;
   if(skillStock <= 0) return;
   skillStock--;
-  if (window.SoundSE) window.SoundSE.playSkill(selectedSkillId);
+  // シャボン玉（bubble）だけはここで鳴らさない：ここは「狙い」に入るタイミングであり、
+  // 実際に弾が飛ぶ「発射」はfinishBubbleAim()側。FBにより発動時ではなく発射時に
+  // 鳴らしてほしいとのことなので、SEはfinishBubbleAim()に移した
+  if (window.SoundSE && selectedSkillId !== 'bubble') window.SoundSE.playSkill(selectedSkillId);
   // 使用後も現在貯まっている途中のゲージ(skillSP)はそのまま継続する
   switch(selectedSkillId){
     case 'blink':   activateBlink();  break;
@@ -4886,6 +4974,10 @@ function finishBubbleAim(){
   bubbleAiming = false;
   skillActive = false;
   skillTimer = 0;
+  // 発射の瞬間（狙い確定→弾が放たれ始めるタイミング）に鳴らす。
+  // 自動発射(5秒経過)／再タップでの早期確定／「発射！」ボタンのいずれから来ても
+  // 必ずここを通るので、このタイミングに1回だけ鳴らせばよい
+  if (window.SoundSE) window.SoundSE.playSkill('bubble');
   const aimBanner = document.getElementById('bubble-aim-banner');
   if (aimBanner) aimBanner.classList.add('hide');
   const fireBtn = document.getElementById('bubble-fire-btn');
@@ -5156,7 +5248,17 @@ function triggerGameOver() {
   addCoins(coinReward.total);
   if (window.SoundSE) window.SoundSE.playEpGet();
   const grandTotalCoins = coinReward.total + itemRewardCoinsThisSession;
-  const levelUps = grantXP(grandTotalCoins * 10);
+  // 無料応援パックのバフ：次の1プレイだけ経験値2倍（saveData.buffs.xpDoubleNextPlay）。
+  // コイン・経験値が0扱いになる基準（MIN_PLAYTIME_FOR_REWARD）未満の短時間プレイでは消費しない扱いにし、
+  // 誤操作などでうっかりバフだけ無駄になってしまうのを防ぐ
+  const xpBuffConsumedThisPlay = !!(saveData.buffs && saveData.buffs.xpDoubleNextPlay) && playTime >= MIN_PLAYTIME_FOR_REWARD;
+  const levelUps = grantXP(grandTotalCoins * 10 * (xpBuffConsumedThisPlay ? 2 : 1));
+  if (xpBuffConsumedThisPlay) {
+    saveData.buffs.xpDoubleNextPlay = false;
+    saveSaveData();
+    updateBuffGlowUI(); // モード選択ボタンのピンク発光もここで消す
+  }
+  document.getElementById('go-exp-double').classList.toggle('hide', !xpBuffConsumedThisPlay);
   document.getElementById('go-coin-base').innerHTML = `+${coinReward.base}<span class="ep-unit">EP</span>`;
   document.getElementById('go-coin-bonus').innerHTML = `+${coinReward.bonus}<span class="ep-unit">EP</span>`;
   const itemRow = document.getElementById('go-coin-item-row');
@@ -5426,44 +5528,15 @@ function drawPauseMap() {
   }
 
   // 停滞ゾーン
-  // 穴（発電装置ギミック）：2026-08〜：実物のギミック本体に寄せた「黒い9本トゲの
-  // バースト形」に変更。起動中はその上に白い「！」を重ねる（従来の緑/グレーの色分けは廃止）
+  // 穴（発電装置ギミック）：黒い9本トゲのバースト形。
+  // 「20ポイント溜まるまで感知している間（＝h.isOpenの間。実際の発電装置本体
+  // 　＝drawRadarDeviceのゲージ表示と同じ条件）」だけ色を#00a5adに変える。
+  // 以前はholeActiveIdx（開放〜自然クローズまでの間）を見ていたため、20ポイントに
+  // 達してギミックが発動しトゲの感知自体は終わった後もタイマーが尽きるまで色が
+  // 変わったままになる不具合があった。また「！」マークは廃止し、色の変化のみにする。
   for (const h of holes) {
-    const isActive = holeActiveIdx >= 0 && holes[holeActiveIdx] === h;
     const outerR = Math.max(4, h.r * scaleX);
-    drawGimmickBurst(c, h.x*scaleX, h.y*scaleY, outerR, outerR*0.52, 9, '#1a1a1a');
-    if (isActive) {
-      // ミニマップは極小サイズのため、フォント（！）は潰れて視認できない。
-      // 代わりに「！」を太い棒＋丸のプリミティブ図形として直接描画し、
-      // どんなサイズでも黒い星の上にくっきり出る白マークにする。
-      const mcx = h.x*scaleX, mcy = h.y*scaleY;
-      const markR = Math.max(outerR * 0.85, 6.5);
-      c.beginPath();
-      c.arc(mcx, mcy, markR, 0, Math.PI * 2);
-      c.fillStyle = '#1a1a1a';
-      c.fill();
-      c.fillStyle = '#ffffff';
-      // 縦棒と丸を、常に黒円の内側に収まる比率で配置（極小サイズでも
-      // アンチエイリアスで消えないよう、太さは絶対px下限を確保する）
-      const stemW = Math.max(2.2, markR * 0.4);
-      const stemH = markR * 0.9;
-      const gap = markR * 0.22;
-      const dotR = Math.max(1.4, markR * 0.28);
-      const totalH = stemH + gap + dotR * 2;
-      const stemTop = mcy - totalH / 2;
-      const rr = stemW / 2;
-      const stemBottom = stemTop + stemH;
-      c.beginPath();
-      c.moveTo(mcx - rr, stemTop + rr);
-      c.arc(mcx, stemTop + rr, rr, Math.PI, 0);
-      c.lineTo(mcx + rr, stemBottom);
-      c.arc(mcx, stemBottom, rr, 0, Math.PI);
-      c.closePath();
-      c.fill();
-      c.beginPath();
-      c.arc(mcx, stemBottom + gap + dotR, dotR, 0, Math.PI * 2);
-      c.fill();
-    }
+    drawGimmickBurst(c, h.x*scaleX, h.y*scaleY, outerR, outerR*0.52, 9, h.isOpen ? '#00a5ad' : '#1a1a1a');
   }
 
   // 磁晶核（密度）：2026-08〜：別レイヤーだったヒートマップを廃止し、玉自体の色に
@@ -10470,6 +10543,8 @@ requestAnimationFrame(loop);
 <script src="js/collection.js"></script>
 <script src="js/zukan.js"></script>
 <script src="js/profile.js"></script>
+<!-- 広告プレースホルダー（js/shop.jsの無料応援パックが利用するwindow.Ads）。shop.jsより先に読み込む -->
+<script src="js/ads.js"></script>
 <script src="js/shop.js"></script>
 <script src="js/story.js"></script>
 <script src="js/marbleSkins.js"></script>

@@ -215,7 +215,10 @@
       (conditionText ? `<div class="achievement-toast-condition">${conditionText}</div>` : '');
     stack.appendChild(toast);
     requestAnimationFrame(()=>{
-      requestAnimationFrame(()=>{ toast.classList.add('show'); });
+      requestAnimationFrame(()=>{
+        toast.classList.add('show'); // ここでポップが左下からスライドインする
+        if (window.SoundSE) window.SoundSE.playAchievementUnlock();
+      });
     });
     setTimeout(()=>{
       toast.classList.remove('show');
