@@ -1,6 +1,6 @@
 {
   "name": "MAGNET BON BON",
-  "short_name": "MAGNETBONBON",
+  "short_name": "Magnet BonBon",
   "description": "磁力で玉を引き寄せて弾き、連鎖爆発を狙うカジュアルアクションゲーム",
   "id": "./index.html",
   "start_url": "./index.html",
