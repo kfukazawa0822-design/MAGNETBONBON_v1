@@ -69,7 +69,6 @@
   };
 
   let audioCtx = null;
-  let unlocked = false;
   const buffers = {};       // key -> AudioBuffer（読込中/失敗はundefined/null）
   const activeVoices = {};  // key -> 現在再生中のAudioBufferSourceNode[]
   const MAX_VOICES_PER_SE = 5; // 同じSEの同時再生数の上限（連鎖などでの音割れ防止）
@@ -85,19 +84,39 @@
     return audioCtx;
   }
 
-  // 初回のユーザー操作でAudioContextを解禁する（iOS/Safari等の自動再生制限対策）。
-  // タイトル画面の最初のタップ含め、ページ内どこを触っても解禁されるようにしておく。
-  function unlock(){
-    if (unlocked) return;
-    unlocked = true;
+  // ── AudioContextの再開 ──────────────────────────────
+  // 【FB対応：画面消灯からの復帰でSEが永久に無音になる問題】
+  // 以前はここが「初回のユーザー操作で1回だけresume()する」処理になっていた
+  // （{once:true}でイベントを1回受け取ったらリスナー自体が外れる実装）。
+  // ところが画面消灯やアプリのバックグラウンド化で、ブラウザ側がAudioContextを
+  // 'suspended'（まれに'closed'）にしてしまうことがあり、その後は「初回操作」が
+  // もう来ない（＝二度とresume()が呼ばれない）ため、SEだけ復帰後ずっと無音になり、
+  // ページの再読込（AudioContextを新規に作り直す）まで直らなかった。
+  // → 「初回だけ」ではなく、操作や画面復帰のたびに毎回呼べるようにする
+  //   （既にrunning中なら何もしない軽い処理なので、頻繁に呼んでも問題ない）。
+  // 'closed'まで行ってしまった場合はresume()自体が効かないため、新しい
+  // AudioContextを作り直し、SEも新contextで再デコードする（AudioBufferは
+  // 生成元のcontextに紐付くため、古いバッファを新contextへそのまま使い回せない）。
+  function resumeCtx(){
     const ac = getCtx();
-    if (ac && ac.state === 'suspended') ac.resume().catch(()=>{});
+    if (!ac) return;
+    if (ac.state === 'closed'){
+      audioCtx = null;
+      const fresh = getCtx();
+      if (fresh) preloadAll();
+      return;
+    }
+    if (ac.state === 'suspended') ac.resume().catch(()=>{});
   }
   ['pointerdown', 'touchstart', 'keydown'].forEach(evName => {
-    document.addEventListener(evName, unlock, { once: true, passive: true });
+    document.addEventListener(evName, resumeCtx, { passive: true }); // {once:true}にしない：毎回チェックする
   });
+  // 画面消灯からの復帰・タブ/アプリのバックグラウンド⇄フォアグラウンド切り替え時にも再開を試みる
+  // （オプションのBGM/SEトグルを手動で触らなくても、画面が戻ってきた時点で自動的に直る）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeCtx(); });
+  window.addEventListener('pageshow', resumeCtx);
 
-  // 起動時に全SEを1回だけデコードしてメモリに載せておく。
+  // 起動時、およびAudioContextを作り直した時に、全SEをデコードしてメモリに載せておく。
   // ファイルがまだ無い（404）/デコード失敗の場合はnullにして、以後の再生要求を静かに無視する。
   function preloadAll(){
     const ac = getCtx();
@@ -197,6 +216,7 @@
     playItemGet, playBatteryHit, playBatteryMiss, playGimmick,
     playEpGet, playAchievementGet, playAchievementUnlock, playEpUse,
     playSkill, playBeaconSet, playBeaconWarp,
+    resume: resumeCtx, // オプション画面のSEトグルなど、外から明示的に再開を試みたい時用
   };
   // 既存のtriggerExplosion()は `typeof playExplosionSE === 'function'` というグローバル関数名を
   // 直接呼び出しているため、グローバルにも同名で公開しておく（js/explosionSkins.js側の

@@ -93,6 +93,12 @@
     }
   }
 
+  // スリープ復帰対策：画面がバックグラウンドから復帰した瞬間に自動で再適用する。
+  // （今まではオプションのBGM ON/OFFトグルを手で触った時だけrefresh()が呼ばれていたため、
+  //  スリープ復帰後にトグルを触るまでBGMが無音のままだった）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  window.addEventListener('pageshow', refresh);
+
   window.SoundBGM = { play, stop, refresh };
 
   console.log('[sound_bgm.js] 初期化完了。window.SoundBGM を公開しました。');

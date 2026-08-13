@@ -4831,10 +4831,11 @@ function useSkill(){
   if(selectedSkillId==='cannon' && cannonCharge) return;
   if(skillStock <= 0) return;
   skillStock--;
-  // シャボン玉（bubble）だけはここで鳴らさない：ここは「狙い」に入るタイミングであり、
-  // 実際に弾が飛ぶ「発射」はfinishBubbleAim()側。FBにより発動時ではなく発射時に
-  // 鳴らしてほしいとのことなので、SEはfinishBubbleAim()に移した
-  if (window.SoundSE && selectedSkillId !== 'bubble') window.SoundSE.playSkill(selectedSkillId);
+  // シャボン玉（bubble）・大砲（cannon）だけはここで鳴らさない：ここは「狙い/チャージ」に
+  // 入るタイミングであり、実際に弾が飛ぶ「発射」はそれぞれfinishBubbleAim()/fireCannon()側。
+  // FBにより発動時ではなく発射時（手を離した時）に鳴らしてほしいとのことなので、
+  // SEはfinishBubbleAim()/fireCannon()に移した
+  if (window.SoundSE && selectedSkillId !== 'bubble' && selectedSkillId !== 'cannon') window.SoundSE.playSkill(selectedSkillId);
   // 使用後も現在貯まっている途中のゲージ(skillSP)はそのまま継続する
   switch(selectedSkillId){
     case 'blink':   activateBlink();  break;
@@ -4925,6 +4926,7 @@ function fireCannon(){
   m.cannonHitCount = 0;   // 無敵飛行中にすり抜けて消費した磁晶核の数（爆発の大きさに反映）
   m.cannonArmed = false;  // true になったら通常の起爆(0.4秒後に爆発)フローに合流する
   marbles.push(m);
+  if (window.SoundSE) window.SoundSE.playSkill('cannon'); // FBにより、ここ（実際に砲弾が発射される瞬間）でSEを鳴らす
   showSkillKanjiBanner('発射！');
   // 発射時の反動パーティクル
   for(let i=0;i<10;i++){
@@ -5327,7 +5329,12 @@ function triggerGameOver() {
   document.getElementById('gameover').classList.add('show');
 
   // 経験値バーが実際に伸びていくアニメーションを再生（レベルアップ時はその都度ポップアップ）
-  const xpPlan = buildXpAnimationPlan(levelBefore, xpBefore, grandTotalCoins * 10, levelUps);
+  // FB対応（バフ確認）：ここが2倍バフを掛けずにgrandTotalCoins*10を渡していたため、
+  // 実際のXP付与（上のgrantXP呼び出し）はバフで2倍になっていても、アニメーションの
+  // 計画だけは1倍ぶんのXPを前提に組まれてしまい、バー演出がレベルアップ数・到達位置と
+  // 食い違う（＝実際のXPより少なく見える）バグがあった。grantXPと必ず同じ実際の付与量を渡す。
+  const xpAwardedThisPlay = grandTotalCoins * 10 * (xpBuffConsumedThisPlay ? 2 : 1);
+  const xpPlan = buildXpAnimationPlan(levelBefore, xpBefore, xpAwardedThisPlay, levelUps);
   playXpGainAnimation(xpPlan);
 }
 
@@ -5480,14 +5487,26 @@ function drawPauseMap() {
                + btnsEl.offsetHeight + 45 + 32;
 
   // 残余高さと画面幅70%の小さい方を正方形サイズとする
+  // FB対応：szが小数値になっていると、CSS上の表示サイズ(sz+'px')とcanvasの内部解像度
+  // (Math.round(sz*DPR))の対応関係にわずかなズレが生まれ、端末によっては枠線や
+  // グリッドが実際の描画範囲から数ピクセルずれて見える一因になりうるため、
+  // 以降で使う直前に整数へ丸めておく。
   const availH = vh - fixedV;
   const maxByW = Math.floor(vw * 0.70);
   const maxCap  = Math.min(Math.floor(vw * 0.6), 600);
-  const sz      = Math.max(120, Math.min(availH, maxByW, maxCap));
+  const sz      = Math.round(Math.max(120, Math.min(availH, maxByW, maxCap)));
 
   // canvasの内部解像度と表示サイズを両方正方形で確定
-  cvs.width        = sz;
-  cvs.height       = sz;
+  // FB反映（2026-08〜）：以前はcanvasの内部解像度(width/height)をCSS上のサイズ(sz)と
+  // 同じ値にしていたため、devicePixelRatioが1より大きい端末（スマホ等）では
+  // canvasの実ピクセル数が画面の物理解像度より少なく、ブラウザ側で拡大表示される際に
+  // 線や図形がぼやけて見えていた（HTML/CSSで描く文字は端末の物理解像度でそのまま
+  // 描画されるためこの影響を受けず、canvas描画分だけがぼやける、という状態）。
+  // メイン画面のcanvas（resize()内のDPR処理）と同じ考え方で、内部解像度だけ
+  // devicePixelRatio倍（上限2倍）に上げ、描画コードのスケールはscale()で吸収する。
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cvs.width        = Math.round(sz * DPR);
+  cvs.height       = Math.round(sz * DPR);
   cvs.style.width  = sz + 'px';
   cvs.style.height = sz + 'px';
 
@@ -5497,6 +5516,7 @@ function drawPauseMap() {
   if (itemsListEl) itemsListEl.style.width = Math.max(0, sz - ITEMS_LIST_INSET * 2) + 'px';
 
   const c = cvs.getContext('2d');
+  c.scale(DPR, DPR); // 以降の描画コードはCSSピクセル基準のまま変更不要
 
   // 背景（2026-08〜：デザイン一新。白背景＋黒の手描き二重枠に変更。
   // 枠線は「やめる/オプション」等のボタンと同じ手描き技法（直線区間を少しだけガタつかせ、
@@ -5517,15 +5537,20 @@ function drawPauseMap() {
   clipToHandDrawnRoundedRect(c, frame.innerPath); // 内枠の内側だけに中身を収める
 
   // グリッド
+  // FB対応：WORLD_W/HがgsX4で割り切れない場合、右端・下端だけ半端な幅のマス目になり、
+  // 枠のギリギリの位置に細切れの線が入って「グリッドが右にズレている」ように見える一因に
+  // なっていたため、右端・下端にも必ず境界線を1本引いて、マスの継ぎ目を枠の内側で揺れさせない。
   c.strokeStyle = 'rgba(0,255,100,0.07)';
   c.lineWidth = 0.5;
   const gs = 80;
   for (let gx = 0; gx < WORLD_W; gx += gs * 4) {
     c.beginPath(); c.moveTo(gx*scaleX, 0); c.lineTo(gx*scaleX, contentSz); c.stroke();
   }
+  c.beginPath(); c.moveTo(WORLD_W*scaleX, 0); c.lineTo(WORLD_W*scaleX, contentSz); c.stroke();
   for (let gy = 0; gy < WORLD_H; gy += gs * 4) {
     c.beginPath(); c.moveTo(0, gy*scaleY); c.lineTo(contentSz, gy*scaleY); c.stroke();
   }
+  c.beginPath(); c.moveTo(0, WORLD_H*scaleY); c.lineTo(contentSz, WORLD_H*scaleY); c.stroke();
 
   // 停滞ゾーン
   // 穴（発電装置ギミック）：黒い9本トゲのバースト形。
@@ -5534,8 +5559,11 @@ function drawPauseMap() {
   // 以前はholeActiveIdx（開放〜自然クローズまでの間）を見ていたため、20ポイントに
   // 達してギミックが発動しトゲの感知自体は終わった後もタイマーが尽きるまで色が
   // 変わったままになる不具合があった。また「！」マークは廃止し、色の変化のみにする。
+  // FB反映（2026-08〜）：磁晶核以外のギミック・岩が縮尺そのままだと小さく見えづらいため、
+  // 見た目のサイズだけ1.5倍に拡大する（位置はそのまま、形の大きさだけブースト）
+  const GIMMICK_VISUAL_BOOST = 1.5;
   for (const h of holes) {
-    const outerR = Math.max(4, h.r * scaleX);
+    const outerR = Math.max(6, h.r * scaleX * GIMMICK_VISUAL_BOOST);
     drawGimmickBurst(c, h.x*scaleX, h.y*scaleY, outerR, outerR*0.52, 9, h.isOpen ? '#00a5ad' : '#1a1a1a');
   }
 
@@ -5556,21 +5584,27 @@ function drawPauseMap() {
   const maxH = Math.max(1, ...heat);
 
   // 磁晶核ドット：密度に応じて玉本体の色を変える（青→緑→橙→赤橙→マゼンタ）
+  // FB反映（2026-08〜）：円だと縁がアンチエイリアスでぼやけて見えるため、
+  // 文字と同じくらいパキッと見えるように、実ピクセル格子に位置を合わせた
+  // 小さい正方形（塗りっぱなしのfillRectは斜め線が無く、境界がにじまない）に変更。
+  // サイズも円(直径5px)より一段小さくした(3px角)。
+  const MARBLE_DOT_SIZE = 3; // CSSピクセル基準の正方形の辺の長さ
   for (const m of marbles) {
     if (!m.alive) continue;
     const mx = m.x * scaleX, my = m.y * scaleY;
     const cx2 = Math.min(cols-1, Math.max(0, Math.floor(mx / cellSz)));
     const cy2 = Math.min(rows-1, Math.max(0, Math.floor(my / cellSz)));
     const t = heat[cy2 * cols + cx2] / maxH;
-    c.beginPath();
-    c.arc(mx, my, 2.5, 0, Math.PI * 2);
-    c.fillStyle = marbleHeatColor(t); c.fill();
+    drawCrispDot(c, mx, my, MARBLE_DOT_SIZE, DPR, marbleHeatColor(t));
   }
 
   // 岩：2026-08〜：単純な円ではなく、本編と同じ流体シェイプ（rk.pts）を黒で描画
+  // FB反映（2026-08〜）：磁晶核以外は見やすく大きめに描いてほしいとのことなので、
+  // 位置は変えずシェイプの大きさだけ1.5倍にブースト
+  const ROCK_VISUAL_BOOST = 1.5;
   for (const rk of rocks) {
     if (!rk.alive || !rk.pts) continue;
-    drawMinimapBlob(c, rk.pts, rk.x*scaleX, rk.y*scaleY, scaleX, '#1a1a1a');
+    drawMinimapBlob(c, rk.pts, rk.x*scaleX, rk.y*scaleY, scaleX * ROCK_VISUAL_BOOST, '#1a1a1a');
   }
 
   // アイテム：2026-08〜：単純な塗り丸ではなく、二重丸（外側リング＋中心の小さい塗り丸）に変更
@@ -5632,6 +5666,20 @@ function marbleHeatColor(t){
   return `rgb(${r},${g},${bl})`;
 }
 
+// 磁晶核ドット用：アンチエイリアスでにじまない「パキッとした」正方形を描く（2026-08〜）。
+// c.arc()の円だと縁が必ずグラデーションでぼやけるが、fillRect()は軸に平行な辺しか
+// 持たないため、描画位置を実ピクセル格子(1/DPR単位)にスナップさせれば縁がにじまない。
+// これは文字が小さくてもパキッと見える理由（フォント側でヒンティング＝格子合わせ
+// されている）と同じ原理。
+function drawCrispDot(c, x, y, size, dpr, fillStyle){
+  const half = size / 2;
+  const sx = Math.round((x - half) * dpr) / dpr;
+  const sy = Math.round((y - half) * dpr) / dpr;
+  const ssize = Math.max(1 / dpr, Math.round(size * dpr) / dpr);
+  c.fillStyle = fillStyle;
+  c.fillRect(sx, sy, ssize, ssize);
+}
+
 // 岩の流体シェイプ（2026-08〜）：本編のpathSmoothBlob(genBlobLoop由来のrk.ptsを
 // quadraticCurveToで滑らかに繋ぐ)と全く同じ技法で、ミニマップの縮尺・位置に合わせて描く。
 // rk.ptsは岩の中心からの相対座標（本編と同じ単位）なので、ox/oyで中心位置へ、scaleで
@@ -5656,7 +5704,17 @@ function drawMinimapBlob(c, pts, ox, oy, scale, fillStyle){
 
 // ギミック（発電装置）の本体形（2026-08〜）：本編の見た目に寄せた、N本トゲの
 // バースト（星形）を描く。起動中の「！」表示は呼び出し側で重ねる。
+// FB対応：実機では、内側の凹み（トゲとトゲの間）が細い楔形になるため、
+// 端末によってはアンチエイリアスの継ぎ目で中心付近だけ色が薄く/まだらに
+// 抜けて見えることがあり、「トゲの先だけ色が変わってヘタみたいになる」という
+// 見え方の原因になっていた。星形そのものの前に、同色の円を土台として
+// 先に塗っておくことで、継ぎ目がどう抜けても中心部が確実に同色で埋まるようにする。
 function drawGimmickBurst(c, cx, cy, outerR, innerR, spikes, fillStyle){
+  c.fillStyle = fillStyle;
+  c.beginPath();
+  c.arc(cx, cy, innerR * 1.05, 0, Math.PI * 2);
+  c.fill();
+
   c.beginPath();
   const total = spikes * 2;
   for (let i = 0; i < total; i++) {
@@ -7016,9 +7074,18 @@ function updateItems(dt,dtSec){
     item.def = resolveItemDef(item.def);
     if(item.collecting){
       item.collectTimer+=dt;
-      item.x+=(player.wx-item.x)*0.18*dt;
-      item.y+=(player.wy-item.y)*0.18*dt;
-      if(Math.hypot(item.x-player.wx,item.y-player.wy)<player.r*0.4||item.collectTimer>30){
+      // FB対応（初期からの既知バグ）：ワールドはループ（トロイダル）構造なのに、
+      // 以前はplayer.wx-item.xをそのまま使っていたため、プレイヤーが世界の
+      // 反対側の境界のすぐ隣（ループでつながっている側＝実際はすぐ近く）にいる時、
+      // 計算上はワールド幅ぶん離れた距離として扱われてしまい、画面の反対端から
+      // 遠くスライドしてくるように見えていた。下の当たり判定と同じ「最短経路」を
+      // 選ぶラップ補正を、吸い寄せの移動計算にも適用する。
+      let dx = player.wx-item.x, dy = player.wy-item.y;
+      if (dx > WORLD_W/2) dx -= WORLD_W; else if (dx < -WORLD_W/2) dx += WORLD_W;
+      if (dy > WORLD_H/2) dy -= WORLD_H; else if (dy < -WORLD_H/2) dy += WORLD_H;
+      item.x = ((item.x + dx*0.18*dt) % WORLD_W + WORLD_W) % WORLD_W;
+      item.y = ((item.y + dy*0.18*dt) % WORLD_H + WORLD_H) % WORLD_H;
+      if(Math.hypot(dx,dy)<player.r*0.4||item.collectTimer>30){
         spawnPickupEffect(item.x,item.y,item.def.color);
         applyItem(item.def); items.splice(i,1); continue;
       }
@@ -7275,9 +7342,10 @@ function updateChaosOverlay(){
   const overlay=document.getElementById('chaos-overlay');
   if(bat<30){
     const intensity=(1-bat/30)*0.4;
-    const r=Math.floor(intensity*80);
+    // FB対応：以前はrgba(r*2,r,0,...)＝赤が緑の2倍・青成分無しという配色だったため、
+    // オレンジ〜赤方向に色付いて見えていた。無彩色（黒の濃淡だけ）で暗くなるように変更。
     overlay.style.opacity='1';
-    overlay.style.background=`rgba(${r*2},${r},0,${intensity*0.6})`;
+    overlay.style.background=`rgba(0,0,0,${intensity*0.6})`;
   } else {
     overlay.style.opacity='0';
   }
@@ -9769,7 +9837,10 @@ Object.keys(DRAG_MODE_BY_BTN_ID).forEach(id=>{
 ['opt-se-on','opt-se-off'].forEach(id=>{
   const btn = document.getElementById(id);
   const on = id==='opt-se-on';
-  const handler = ()=>{ settings.seEnabled=on; saveSettings(); updateOptionUI(); };
+  const handler = ()=>{
+    settings.seEnabled=on; saveSettings(); updateOptionUI();
+    if (window.SoundSE) window.SoundSE.resume(); // スリープ復帰等でAudioContextが止まっている場合の保険（BGM側のrefresh()と同様の意図）
+  };
   btn.addEventListener('click', handler);
   btn.addEventListener('touchstart',e=>{e.preventDefault();handler();},{passive:false});
 });
