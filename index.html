@@ -9094,6 +9094,7 @@ function drawPlayer(){
   const selectedSkinId = settings.selectedSkinId || 'default';
   let playerImg = (typeof IMAGE_ASSETS !== 'undefined')
     ? IMAGE_ASSETS.get('player', `${selectedSkinId}_${player.magnet.toLowerCase()}`) : null;
+  const skin1ImageReady = selectedSkinId === 'skin1' && !!(playerImg && playerImg.complete && playerImg.naturalWidth > 0);
   if (!(playerImg && playerImg.complete && playerImg.naturalWidth > 0) && selectedSkinId !== 'default') {
     // 選択中のスキン画像がまだ用意されていない場合はデフォルト機体で代用する
     playerImg = (typeof IMAGE_ASSETS !== 'undefined')
@@ -9105,9 +9106,24 @@ function drawPlayer(){
     // 画像が正方形でない場合に引き伸ばされて歪むのを防ぐため、実際の縦横比を保ったまま
     // 「長い方の辺」がimgSizeに収まるようスケーリングする
     const imgSize = r*2.3; // 六角形版の見た目の大きさに合わせた目安値。実機で見て調整可
+
+    // FB対応：スキン①（スライムモチーフ）だけ、常にプニョプニョ膨らみ縮む見た目の
+    // 呼吸アニメーションを追加する。現状の見た目サイズ(imgSize)を最小値とし、
+    // そこから常に一定周期で+10%まで膨らんではまた最小値に戻る…を繰り返す
+    // （cosベースなので両端で滑らかに減速し、呼吸のように見える）。
+    // 判定(player.r)には一切影響させず、見た目の拡縮のみに留める。
+    const SLIME_WOBBLE_AMP = 0.10;     // 最大でどれだけ膨らむか（+10%）
+    const SLIME_WOBBLE_PERIOD = 1.75;  // 1周期の長さ（秒）＝縮小→膨張→縮小
+    let wobbleScale = 1;
+    if (skin1ImageReady) {
+      const nowSec = Date.now() * 0.001;
+      const wobblePhase = 0.5 - 0.5 * Math.cos((nowSec / SLIME_WOBBLE_PERIOD) * Math.PI * 2);
+      wobbleScale = 1 + SLIME_WOBBLE_AMP * wobblePhase; // 1.0(最小・現状サイズ) 〜 1.0+AMP(最大)
+    }
+
     const aspect = playerImg.naturalWidth / playerImg.naturalHeight;
-    const drawW = aspect >= 1 ? imgSize : imgSize * aspect;
-    const drawH = aspect >= 1 ? imgSize / aspect : imgSize;
+    const drawW = (aspect >= 1 ? imgSize : imgSize * aspect) * wobbleScale;
+    const drawH = (aspect >= 1 ? imgSize / aspect : imgSize) * wobbleScale;
     ctx.drawImage(playerImg, -drawW/2, -drawH/2, drawW, drawH);
   } else {
 
